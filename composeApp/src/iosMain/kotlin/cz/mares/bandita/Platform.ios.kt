@@ -1,21 +1,10 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package cz.mares.bandita
 
+import kotlinx.cinterop.ExperimentalForeignApi
 import platform.AudioToolbox.AudioServicesPlaySystemSound
-import platform.Foundation.NSData
-import platform.Foundation.NSDictionary
-import platform.Foundation.NSError
-import platform.Foundation.NSHTTPURLResponse
-import platform.Foundation.NSJSONSerialization
-import platform.Foundation.NSMutableURLRequest
-import platform.Foundation.NSNumber
-import platform.Foundation.NSString
-import platform.Foundation.NSURL
-import platform.Foundation.NSURLSession
-import platform.Foundation.NSUTF8StringEncoding
-import platform.Foundation.NSUserDefaults
-import platform.Foundation.create
-import platform.Foundation.dataUsingEncoding
-import platform.Foundation.setValue
+import platform.Foundation.*
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import kotlin.random.Random
@@ -115,23 +104,24 @@ actual object PlatformServices {
             onResult(emptyList(), "Neplatná URL")
             return
         }
-        val task = NSURLSession.sharedSession.dataTaskWithURL(nsUrl) { data: NSData?, _, error: NSError? ->
+        val getReq = NSMutableURLRequest(uRL = nsUrl).apply {
+            setHTTPMethod("GET")
+        }
+        val task = NSURLSession.sharedSession.dataTaskWithRequest(getReq) { data: NSData?, _, error: NSError? ->
             if (error != null || data == null) {
                 dispatch_async(dispatch_get_main_queue()) {
                     onResult(emptyList(), error?.localizedDescription ?: "Chyba sítě")
                 }
-                return@dataTaskWithURL
+                return@dataTaskWithRequest
             }
-            val parsed = NSJSONSerialization.JSONObjectWithData(data, 0u, null) as? NSDictionary
+            val parsed = NSJSONSerialization.JSONObjectWithData(data, 0u, null) as? kotlin.collections.Map<*, *>
             val entries = mutableListOf<LeaderboardEntry>()
             if (parsed != null) {
-                val allKeys = parsed.allKeys
-                for (k in allKeys) {
+                for ((k, valueObj) in parsed) {
                     val nickKey = k as? String ?: continue
-                    val valueObj = parsed.objectForKey(nickKey)
                     val scoreVal = when (valueObj) {
-                        is NSDictionary -> (valueObj.objectForKey("score") as? NSNumber)?.intValue ?: 0
-                        is NSNumber -> valueObj.intValue
+                        is kotlin.collections.Map<*, *> -> (valueObj["score"] as? Number)?.toInt() ?: 0
+                        is Number -> valueObj.toInt()
                         else -> 0
                     }
                     entries.add(
@@ -173,24 +163,27 @@ actual object PlatformServices {
             return
         }
 
-        val checkTask = NSURLSession.sharedSession.dataTaskWithURL(nsUrl) { data: NSData?, _, error: NSError? ->
+        val checkReq = NSMutableURLRequest(uRL = nsUrl).apply {
+            setHTTPMethod("GET")
+        }
+        val checkTask = NSURLSession.sharedSession.dataTaskWithRequest(checkReq) { data: NSData?, _, error: NSError? ->
             if (error != null) {
                 dispatch_async(dispatch_get_main_queue()) {
                     onResult(false, error.localizedDescription)
                 }
-                return@dataTaskWithURL
+                return@dataTaskWithRequest
             }
             var existingScore = -1
             if (data != null) {
-                val existingDict = NSJSONSerialization.JSONObjectWithData(data, 0u, null) as? NSDictionary
+                val existingDict = NSJSONSerialization.JSONObjectWithData(data, 0u, null) as? kotlin.collections.Map<*, *>
                 if (existingDict != null) {
-                    val ownerId = existingDict.objectForKey("deviceId") as? String ?: ""
-                    existingScore = (existingDict.objectForKey("score") as? NSNumber)?.intValue ?: 0
+                    val ownerId = existingDict["deviceId"] as? String ?: ""
+                    existingScore = (existingDict["score"] as? Number)?.toInt() ?: 0
                     if (ownerId.isNotBlank() && ownerId != devId) {
                         dispatch_async(dispatch_get_main_queue()) {
                             onResult(false, "Přezdívka '$cleanNick' už patří jinému hráči. Zvol si prosím jinou.")
                         }
-                        return@dataTaskWithURL
+                        return@dataTaskWithRequest
                     }
                 }
             }
@@ -201,17 +194,18 @@ actual object PlatformServices {
                 dispatch_async(dispatch_get_main_queue()) {
                     onResult(true, null)
                 }
-                return@dataTaskWithURL
+                return@dataTaskWithRequest
             }
 
-            val req = NSMutableURLRequest.requestWithURL(nsUrl)
-            req.setHTTPMethod("PUT")
-            req.setValue("application/json", forHTTPHeaderField = "Content-Type")
             val jsonStr = "{\"score\":$finalScore,\"deviceId\":\"$devId\"}"
             val bodyData = NSString.create(string = jsonStr).dataUsingEncoding(NSUTF8StringEncoding)
-            req.setHTTPBody(bodyData)
+            val putReq = NSMutableURLRequest(uRL = nsUrl).apply {
+                setHTTPMethod("PUT")
+                setValue("application/json", forHTTPHeaderField = "Content-Type")
+                setHTTPBody(bodyData)
+            }
 
-            val putTask = NSURLSession.sharedSession.dataTaskWithRequest(req) { _, response, putErr ->
+            val putTask = NSURLSession.sharedSession.dataTaskWithRequest(putReq) { _, response: NSURLResponse?, putErr: NSError? ->
                 val httpResp = response as? NSHTTPURLResponse
                 val statusCode = httpResp?.statusCode?.toInt() ?: 0
                 dispatch_async(dispatch_get_main_queue()) {

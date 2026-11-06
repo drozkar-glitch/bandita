@@ -38,14 +38,16 @@ actual object PlatformServices {
         defaults.setInteger(credits.toLong(), forKey = KEY_CREDITS)
     }
 
-    actual fun getHighScore(): Int {
-        val obj = defaults.objectForKey(KEY_HIGH_SCORE)
-        return if (obj != null) defaults.integerForKey(KEY_HIGH_SCORE).toInt() else 200
+    actual fun getHighScore(gameId: String): Int {
+        val key = if (gameId == "bandita") KEY_HIGH_SCORE else "${KEY_HIGH_SCORE}_$gameId"
+        val obj = defaults.objectForKey(key)
+        return if (obj != null) defaults.integerForKey(key).toInt() else 200
     }
 
-    actual fun saveHighScore(score: Int) {
-        if (score > getHighScore()) {
-            defaults.setInteger(score.toLong(), forKey = KEY_HIGH_SCORE)
+    actual fun saveHighScore(score: Int, gameId: String) {
+        val key = if (gameId == "bandita") KEY_HIGH_SCORE else "${KEY_HIGH_SCORE}_$gameId"
+        if (score > getHighScore(gameId)) {
+            defaults.setInteger(score.toLong(), forKey = key)
         }
     }
 
@@ -70,8 +72,15 @@ actual object PlatformServices {
             BanditaSound.REEL_TICK -> 1103u
             BanditaSound.REEL_STOP -> 1105u
             BanditaSound.HOLD_LOCK -> 1057u
-            BanditaSound.RISK_STEP_A -> 1052u
-            BanditaSound.RISK_STEP_B -> 1054u
+            BanditaSound.WHEEL_TICK -> 1104u
+            BanditaSound.SUPER_TRANSFER -> 1025u
+            BanditaSound.RISK_BEAT_A -> 1052u
+            BanditaSound.RISK_BEAT_B -> 1054u
+            BanditaSound.RISK_WIN_1 -> 1025u
+            BanditaSound.RISK_WIN_2 -> 1026u
+            BanditaSound.RISK_WIN_3 -> 1027u
+            BanditaSound.RISK_WIN_4 -> 1028u
+            BanditaSound.RISK_WIN_5 -> 1028u
             BanditaSound.RISK_LOSE -> 1073u
             BanditaSound.WIN_SMALL -> 1025u
             BanditaSound.WIN_BIG -> 1026u

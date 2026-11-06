@@ -10,21 +10,28 @@ enum class BanditaSound {
     BUTTON_CLICK,
     REEL_TICK,
     REEL_STOP,
+    HOLD_LOCK,
     WIN_SMALL,
     WIN_BIG,
     JACKPOT_777,
-    RISK_STEP_A,
-    RISK_STEP_B,
+    RISK_BEAT_A,
+    RISK_BEAT_B,
+    RISK_WIN_1,
+    RISK_WIN_2,
+    RISK_WIN_3,
+    RISK_WIN_4,
+    RISK_WIN_5,
     RISK_LOSE,
-    HOLD_LOCK
+    WHEEL_TICK,
+    SUPER_TRANSFER
 }
 
 expect object PlatformServices {
     fun playSound(sound: BanditaSound)
     fun getSavedCredits(): Int
     fun saveCredits(credits: Int)
-    fun getHighScore(): Int
-    fun saveHighScore(score: Int)
+    fun getHighScore(gameId: String = "bandita"): Int
+    fun saveHighScore(score: Int, gameId: String = "bandita")
     fun getSavedNick(): String
     fun saveNick(nick: String)
     fun getDeviceId(): String

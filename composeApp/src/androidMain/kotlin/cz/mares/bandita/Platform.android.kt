@@ -25,7 +25,7 @@ object AndroidContextHolder {
 actual object PlatformServices {
     private const val PREFS_NAME = "bandita_mares_prefs"
     private const val KEY_CREDITS = "saved_credits"
-    private const val KEY_HIGH_SCORE = "high_score"
+    private const val KEY_HIGH_SCORE_PREFIX = "high_score_"
     private const val KEY_NICK = "player_nick"
     private const val KEY_DEVICE_ID = "device_id"
     private const val FIREBASE_BASE_URL = "https://mares-games-default-rtdb.europe-west1.firebasedatabase.app"
@@ -40,12 +40,17 @@ actual object PlatformServices {
         prefs()?.edit()?.putInt(KEY_CREDITS, credits)?.apply()
     }
 
-    actual fun getHighScore(): Int = prefs()?.getInt(KEY_HIGH_SCORE, 200) ?: 200
+    actual fun getHighScore(gameId: String): Int {
+        val p = prefs() ?: return 200
+        val key = if (gameId == "bandita") "high_score" else "$KEY_HIGH_SCORE_PREFIX$gameId"
+        return p.getInt(key, 200)
+    }
 
-    actual fun saveHighScore(score: Int) {
-        val current = getHighScore()
+    actual fun saveHighScore(score: Int, gameId: String) {
+        val current = getHighScore(gameId)
         if (score > current) {
-            prefs()?.edit()?.putInt(KEY_HIGH_SCORE, score)?.apply()
+            val key = if (gameId == "bandita") "high_score" else "$KEY_HIGH_SCORE_PREFIX$gameId"
+            prefs()?.edit()?.putInt(key, score)?.apply()
         }
     }
 
@@ -69,26 +74,60 @@ actual object PlatformServices {
         thread {
             try {
                 when (sound) {
-                    BanditaSound.BUTTON_CLICK -> synthSequence(listOf(880.0 to 35))
-                    BanditaSound.REEL_TICK -> synthSequence(listOf(280.0 to 16))
-                    BanditaSound.REEL_STOP -> synthSequence(listOf(140.0 to 55, 95.0 to 40))
-                    BanditaSound.HOLD_LOCK -> synthSequence(listOf(660.0 to 45, 990.0 to 55))
-                    BanditaSound.RISK_STEP_A -> synthSequence(listOf(523.25 to 75))
-                    BanditaSound.RISK_STEP_B -> synthSequence(listOf(659.25 to 75))
-                    BanditaSound.RISK_LOSE -> synthSequence(listOf(220.0 to 140, 146.8 to 240))
-                    BanditaSound.WIN_SMALL -> synthSequence(
-                        listOf(523.25 to 70, 659.25 to 70, 783.99 to 70, 1046.5 to 150)
+                    BanditaSound.BUTTON_CLICK -> synthArcadeTone(listOf(987.77 to 28, 1318.5 to 22))
+                    BanditaSound.REEL_TICK -> synthArcadeTone(listOf(240.0 to 14), richHarmonics = false)
+                    BanditaSound.REEL_STOP -> synthArcadeTone(listOf(155.0 to 45, 98.0 to 45), richHarmonics = false)
+                    BanditaSound.HOLD_LOCK -> synthArcadeTone(listOf(587.33 to 40, 880.0 to 55))
+                    BanditaSound.WHEEL_TICK -> synthArcadeTone(listOf(1174.66 to 22, 1567.98 to 18))
+                    BanditaSound.SUPER_TRANSFER -> synthArcadeTone(
+                        listOf(523.25 to 35, 659.25 to 35, 783.99 to 35, 1046.5 to 45, 1318.5 to 70)
                     )
-                    BanditaSound.WIN_BIG -> synthSequence(
+
+                    // Chytlavy 90s rytmicky podkres pri blikani RISK 2x (stridavy 2-tonovy groove)
+                    BanditaSound.RISK_BEAT_A -> synthArcadeTone(
+                        listOf(330.0 to 38, 659.25 to 52)
+                    )
+                    BanditaSound.RISK_BEAT_B -> synthArcadeTone(
+                        listOf(293.66 to 38, 587.33 to 52)
+                    )
+
+                    // Stupnujici se triumfalni trylky pri trefenem RISKU (1. az 5. krok o ton vys!)
+                    BanditaSound.RISK_WIN_1 -> synthArcadeTone(
+                        listOf(523.25 to 45, 659.25 to 45, 783.99 to 45, 659.25 to 40, 1046.5 to 120)
+                    )
+                    BanditaSound.RISK_WIN_2 -> synthArcadeTone(
+                        listOf(587.33 to 45, 739.99 to 45, 880.0 to 45, 739.99 to 40, 1174.66 to 120)
+                    )
+                    BanditaSound.RISK_WIN_3 -> synthArcadeTone(
+                        listOf(659.25 to 45, 830.61 to 45, 987.77 to 45, 830.61 to 40, 1318.51 to 130)
+                    )
+                    BanditaSound.RISK_WIN_4 -> synthArcadeTone(
+                        listOf(698.46 to 45, 880.0 to 45, 1046.5 to 45, 880.0 to 40, 1396.91 to 140)
+                    )
+                    BanditaSound.RISK_WIN_5 -> synthArcadeTone(
                         listOf(
-                            523.25 to 65, 659.25 to 65, 783.99 to 65, 1046.5 to 90,
-                            783.99 to 65, 1046.5 to 180
+                            783.99 to 45, 987.77 to 45, 1174.66 to 45, 1567.98 to 70,
+                            1174.66 to 45, 1567.98 to 190
                         )
                     )
-                    BanditaSound.JACKPOT_777 -> synthSequence(
+
+                    BanditaSound.RISK_LOSE -> synthArcadeTone(
+                        listOf(311.13 to 90, 277.18 to 90, 246.94 to 110, 185.0 to 230)
+                    )
+
+                    BanditaSound.WIN_SMALL -> synthArcadeTone(
+                        listOf(523.25 to 60, 659.25 to 60, 783.99 to 60, 1046.5 to 140)
+                    )
+                    BanditaSound.WIN_BIG -> synthArcadeTone(
                         listOf(
-                            523.25 to 70, 659.25 to 70, 783.99 to 70, 1046.5 to 110,
-                            987.77 to 70, 1046.5 to 70, 1318.5 to 110, 1567.98 to 260
+                            523.25 to 55, 659.25 to 55, 783.99 to 55, 1046.5 to 80,
+                            783.99 to 55, 1046.5 to 80, 1318.5 to 170
+                        )
+                    )
+                    BanditaSound.JACKPOT_777 -> synthArcadeTone(
+                        listOf(
+                            523.25 to 60, 659.25 to 60, 783.99 to 60, 1046.5 to 95,
+                            987.77 to 60, 1046.5 to 60, 1318.5 to 95, 1567.98 to 240
                         )
                     )
                 }
@@ -97,7 +136,10 @@ actual object PlatformServices {
         }
     }
 
-    private fun synthSequence(notes: List<Pair<Double, Int>>) {
+    /**
+     * Dvouhlasy retro syntezator ve stylu 90s automatovych cipu (YM2149 / OPL)
+     */
+    private fun synthArcadeTone(notes: List<Pair<Double, Int>>, richHarmonics: Boolean = true) {
         val sampleRate = 22050
         val totalMs = notes.sumOf { it.second }
         val totalSamples = (sampleRate * totalMs) / 1000
@@ -109,11 +151,27 @@ actual object PlatformServices {
             val count = (sampleRate * durationMs) / 1000
             for (i in 0 until count) {
                 if (offset + i >= totalSamples) break
-                val env = if (i < count / 8) i.toDouble() / (count / 8).coerceAtLeast(1)
-                else (count - i).toDouble() / count.toDouble()
-                val angle = 2.0 * PI * i * freq / sampleRate
-                val rawWave = if (sin(angle) >= 0.0) 0.7 else -0.7
-                pcm[offset + i] = (rawWave * env * 14000).toInt().toShort()
+                val attackSamples = (count / 10).coerceAtLeast(1)
+                val env = if (i < attackSamples) {
+                    i.toDouble() / attackSamples.toDouble()
+                } else {
+                    1.0 - ((i - attackSamples).toDouble() / (count - attackSamples).coerceAtLeast(1).toDouble()) * 0.65
+                }
+
+                val angle1 = 2.0 * PI * i * freq / sampleRate
+                val sq1 = if (sin(angle1) >= 0.0) 0.55 else -0.55
+
+                val sampleVal = if (richHarmonics) {
+                    // Pridame oktavovou harmonickou a jemny FM dozvuk pro chytlavy zvonivy zvuk
+                    val angle2 = 2.0 * PI * i * (freq * 2.0) / sampleRate
+                    val sq2 = if (sin(angle2) >= 0.15) 0.28 else -0.28
+                    val sub = sin(angle1 * 0.5) * 0.17
+                    sq1 + sq2 + sub
+                } else {
+                    sq1
+                }
+
+                pcm[offset + i] = (sampleVal * env * 14500).toInt().coerceIn(-32000, 32000).toShort()
             }
             offset += count
         }
@@ -138,7 +196,7 @@ actual object PlatformServices {
 
         track.write(pcm, 0, pcm.size)
         track.play()
-        Thread.sleep(totalMs.toLong() + 40L)
+        Thread.sleep(totalMs.toLong() + 35L)
         track.release()
     }
 

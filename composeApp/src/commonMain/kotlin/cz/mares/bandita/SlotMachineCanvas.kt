@@ -23,6 +23,7 @@ import kotlin.math.sin
 
 @Composable
 fun SlotMachineReelsCanvas(
+    reelCount: Int,
     reels: List<List<SlotSymbol>>,
     spinningReels: List<Boolean>,
     reelPhaseOffsets: List<Float>,
@@ -47,7 +48,7 @@ fun SlotMachineReelsCanvas(
 
         // Vyhradime 90 % sirky pro okno valcu a 10 % vpravo pro mechanickou paku
         val cabinetWidth = w * 0.90f
-        val pad = min(cabinetWidth, h) * 0.035f
+        val pad = min(cabinetWidth, h) * 0.032f
         val windowLeft = pad * 1.4f
         val windowTop = pad
         val windowWidth = cabinetWidth - pad * 2.8f
@@ -70,13 +71,13 @@ fun SlotMachineReelsCanvas(
             cornerRadius = CornerRadius(14f, 14f)
         )
 
-        val reelGap = windowWidth * 0.02f
-        val reelWidth = (windowWidth - reelGap * 4f) / 3f
+        val reelGap = windowWidth * 0.018f
+        val reelWidth = (windowWidth - reelGap * (reelCount + 1)) / reelCount.toFloat()
         val reelHeight = windowHeight - reelGap * 2f
         val cellHeight = reelHeight / 3f
 
-        // 2) Vykresleni 3 valcu
-        for (reelIdx in 0..2) {
+        // 2) Vykresleni 3 nebo 4 valcu podle zvoleneho automatu
+        for (reelIdx in 0 until reelCount) {
             val rx = windowLeft + reelGap + reelIdx * (reelWidth + reelGap)
             val ry = windowTop + reelGap
 
@@ -129,8 +130,8 @@ fun SlotMachineReelsCanvas(
                         val cx = rx + reelWidth * 0.5f
 
                         val isWinningCell = winningLines.any { win ->
-                            win.rowsPerReel.getOrElse(reelIdx) { -1 } == row &&
-                                (!win.isTwoCherryBonus || reelIdx < 2)
+                            reelIdx in win.activeColumns &&
+                                win.rowsPerReel.getOrElse(reelIdx) { -1 } == row
                         }
 
                         if (isWinningCell) {
@@ -195,7 +196,7 @@ fun SlotMachineReelsCanvas(
 
         // 3) Vodici linky 5 vyhernich linii na okrajich + zvyrazneni vyher
         val rowCentersY = List(3) { r -> windowTop + reelGap + r * cellHeight + cellHeight * 0.5f }
-        val reelCentersX = List(3) { c -> windowLeft + reelGap + c * (reelWidth + reelGap) + reelWidth * 0.5f }
+        val reelCentersX = List(reelCount) { c -> windowLeft + reelGap + c * (reelWidth + reelGap) + reelWidth * 0.5f }
 
         // Jemna vodici linka uprostred (hlavni linie 1)
         drawLine(
@@ -206,7 +207,7 @@ fun SlotMachineReelsCanvas(
         )
 
         // Znaky linii 1..5 na levem okraji
-        val badgeRadius = min(pad * 0.65f, 14f)
+        val badgeRadius = min(pad * 0.65f, 13f)
         val lineBadgePositions = listOf(
             1 to Offset(windowLeft - badgeRadius * 0.5f, rowCentersY[1]),
             2 to Offset(windowLeft - badgeRadius * 0.5f, rowCentersY[0]),
@@ -238,40 +239,29 @@ fun SlotMachineReelsCanvas(
                 4 -> Color(0xFFFFEA00)
                 else -> Color(0xFFE040FB)
             }
-            val p0 = Offset(reelCentersX[0], rowCentersY[win.rowsPerReel[0]])
-            val p1 = Offset(reelCentersX[1], rowCentersY[win.rowsPerReel[1]])
-            val p2 = Offset(reelCentersX[2], rowCentersY[win.rowsPerReel[2]])
-
             val alpha = if (blinkPhase) 1f else 0.45f
-            drawLine(
-                color = lineColor.copy(alpha = alpha * 0.45f),
-                start = p0,
-                end = p1,
-                strokeWidth = 14f,
-                cap = StrokeCap.Round
-            )
-            drawLine(
-                color = lineColor.copy(alpha = alpha),
-                start = p0,
-                end = p1,
-                strokeWidth = 5.5f,
-                cap = StrokeCap.Round
-            )
-            if (!win.isTwoCherryBonus) {
-                drawLine(
-                    color = lineColor.copy(alpha = alpha * 0.45f),
-                    start = p1,
-                    end = p2,
-                    strokeWidth = 14f,
-                    cap = StrokeCap.Round
-                )
-                drawLine(
-                    color = lineColor.copy(alpha = alpha),
-                    start = p1,
-                    end = p2,
-                    strokeWidth = 5.5f,
-                    cap = StrokeCap.Round
-                )
+            val cols = win.activeColumns.sorted()
+            for (idx in 0 until cols.size - 1) {
+                val cStart = cols[idx]
+                val cEnd = cols[idx + 1]
+                if (cStart in reelCentersX.indices && cEnd in reelCentersX.indices) {
+                    val pStart = Offset(reelCentersX[cStart], rowCentersY[win.rowsPerReel[cStart]])
+                    val pEnd = Offset(reelCentersX[cEnd], rowCentersY[win.rowsPerReel[cEnd]])
+                    drawLine(
+                        color = lineColor.copy(alpha = alpha * 0.45f),
+                        start = pStart,
+                        end = pEnd,
+                        strokeWidth = 14f,
+                        cap = StrokeCap.Round
+                    )
+                    drawLine(
+                        color = lineColor.copy(alpha = alpha),
+                        start = pStart,
+                        end = pEnd,
+                        strokeWidth = 5.5f,
+                        cap = StrokeCap.Round
+                    )
+                }
             }
         }
 
@@ -376,7 +366,6 @@ private fun DrawScope.drawCherrySymbol(c: Offset, r: Float) {
     val leftCherry = Offset(c.x - r * 0.36f, c.y + r * 0.32f)
     val rightCherry = Offset(c.x + r * 0.36f, c.y + r * 0.40f)
 
-    // Stopky
     val stemPath = Path().apply {
         moveTo(leftCherry.x, leftCherry.y - r * 0.2f)
         quadraticBezierTo(c.x - r * 0.25f, c.y - r * 0.45f, topStem.x, topStem.y)
@@ -385,7 +374,6 @@ private fun DrawScope.drawCherrySymbol(c: Offset, r: Float) {
     }
     drawPath(stemPath, color = Color(0xFF2E7D32), style = Stroke(width = r * 0.11f, cap = StrokeCap.Round))
 
-    // Zeleny listek nahore
     val leafPath = Path().apply {
         moveTo(topStem.x, topStem.y)
         quadraticBezierTo(topStem.x + r * 0.45f, topStem.y - r * 0.18f, topStem.x + r * 0.55f, topStem.y + r * 0.15f)
@@ -394,7 +382,6 @@ private fun DrawScope.drawCherrySymbol(c: Offset, r: Float) {
     }
     drawPath(leafPath, color = Color(0xFF43A047))
 
-    // Dve tresne s leskem
     val cr = r * 0.42f
     for (pos in listOf(leftCherry, rightCherry)) {
         drawCircle(color = Color(0xFF8E0000), radius = cr + 2f, center = pos)
@@ -434,7 +421,6 @@ private fun DrawScope.drawLemonSymbol(c: Offset, r: Float) {
     )
     drawPath(path = path, color = Color(0xFFF57F17), style = Stroke(width = r * 0.08f))
 
-    // Odlesk
     drawOval(
         color = Color(0x99FFFFFF),
         topLeft = Offset(c.x - r * 0.45f, c.y - r * 0.35f),
@@ -454,7 +440,6 @@ private fun DrawScope.drawOrangeSymbol(c: Offset, r: Float) {
         radius = rad,
         center = Offset(c.x, c.y + r * 0.06f)
     )
-    // Zeleny listek
     val leaf = Path().apply {
         moveTo(c.x, c.y - rad * 0.88f)
         quadraticBezierTo(c.x + r * 0.45f, c.y - rad * 1.2f, c.x + r * 0.52f, c.y - rad * 0.75f)
@@ -488,13 +473,11 @@ private fun DrawScope.drawPlumSymbol(c: Offset, r: Float) {
         size = Size(w, h),
         style = Stroke(width = r * 0.07f)
     )
-    // Typicka ryha svestky
     val crease = Path().apply {
         moveTo(c.x + r * 0.05f, topLeft.y + h * 0.12f)
         quadraticBezierTo(c.x + r * 0.28f, c.y, c.x + r * 0.05f, topLeft.y + h * 0.88f)
     }
     drawPath(crease, color = Color(0x881A0033), style = Stroke(width = r * 0.06f, cap = StrokeCap.Round))
-    // Stopka
     drawLine(
         color = Color(0xFF5D4037),
         start = Offset(c.x, topLeft.y + 2f),
@@ -502,7 +485,6 @@ private fun DrawScope.drawPlumSymbol(c: Offset, r: Float) {
         strokeWidth = r * 0.1f,
         cap = StrokeCap.Round
     )
-    // Odlesk
     drawOval(
         color = Color(0x99FFFFFF),
         topLeft = Offset(c.x - r * 0.38f, c.y - r * 0.35f),
@@ -511,7 +493,6 @@ private fun DrawScope.drawPlumSymbol(c: Offset, r: Float) {
 }
 
 private fun DrawScope.drawGrapesSymbol(c: Offset, r: Float) {
-    // Stopka nahore
     drawLine(
         color = Color(0xFF4E342E),
         start = Offset(c.x, c.y - r * 0.55f),
@@ -549,7 +530,6 @@ private fun DrawScope.drawMelonSymbol(c: Offset, r: Float) {
     val h = r * 1.26f
     val topLeft = Offset(c.x - w / 2f, c.y - h / 2f)
 
-    // Tmave zeleny meloun s pruhy
     drawOval(
         brush = Brush.radialGradient(
             colors = listOf(Color(0xFF66BB6A), Color(0xFF2E7D32), Color(0xFF1B5E20)),
@@ -559,7 +539,6 @@ private fun DrawScope.drawMelonSymbol(c: Offset, r: Float) {
         topLeft = topLeft,
         size = Size(w, h)
     )
-    // Svetle zelene pruhy
     for (dy in listOf(-0.28f, 0f, 0.28f)) {
         drawLine(
             color = Color(0xFFA5D6A7),
@@ -569,7 +548,6 @@ private fun DrawScope.drawMelonSymbol(c: Offset, r: Float) {
             cap = StrokeCap.Round
         )
     }
-    // Vykrojena cervena duzina uprostred
     val sliceW = w * 0.72f
     val sliceH = h * 0.56f
     drawOval(
@@ -577,7 +555,6 @@ private fun DrawScope.drawMelonSymbol(c: Offset, r: Float) {
         topLeft = Offset(c.x - sliceW / 2f, c.y - sliceH / 2f),
         size = Size(sliceW, sliceH)
     )
-    // Cerna seminka
     for (dx in listOf(-0.22f, 0f, 0.22f)) {
         drawCircle(
             color = Color(0xFF212121),
@@ -594,7 +571,6 @@ private fun DrawScope.drawMelonSymbol(c: Offset, r: Float) {
 }
 
 private fun DrawScope.drawBellSymbol(c: Offset, r: Float) {
-    // Srdce zvonu dole
     drawCircle(
         color = Color(0xFFFF8F00),
         radius = r * 0.22f,
@@ -626,7 +602,6 @@ private fun DrawScope.drawBarSymbol(c: Offset, r: Float) {
     val h = r * 1.08f
     val topLeft = Offset(c.x - w / 2f, c.y - h / 2f)
 
-    // Zlaty 3D ramecek cihlicky BAR
     drawRoundRect(
         brush = Brush.linearGradient(
             listOf(Color(0xFFFFF59D), Color(0xFFFFB300), Color(0xFFF57F17))
@@ -635,14 +610,12 @@ private fun DrawScope.drawBarSymbol(c: Offset, r: Float) {
         size = Size(w + 6f, h + 6f),
         cornerRadius = CornerRadius(10f, 10f)
     )
-    // Cerny podklad BAR
     drawRoundRect(
         color = Color(0xFF141414),
         topLeft = topLeft,
         size = Size(w, h),
         cornerRadius = CornerRadius(8f, 8f)
     )
-    // Vnitrni zlata linka
     drawRoundRect(
         color = Color(0xFFFFD54F),
         topLeft = Offset(topLeft.x + 3.5f, topLeft.y + 3.5f),
@@ -651,7 +624,6 @@ private fun DrawScope.drawBarSymbol(c: Offset, r: Float) {
         style = Stroke(width = 1.5f)
     )
 
-    // Vektorove vykresleni pismen B - A - R uvnitr tabulky
     val strokeW = (r * 0.115f).coerceAtLeast(2.2f)
     val letterStyle = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
     val letterColor = Color(0xFFFFEA00)
@@ -660,7 +632,7 @@ private fun DrawScope.drawBarSymbol(c: Offset, r: Float) {
     val midY = c.y
     val botY = c.y + h * 0.25f
 
-    // Pismeno B (vlevo)
+    // Pismeno B
     val bxL = c.x - w * 0.34f
     val bxR = c.x - w * 0.15f
     val pathB = Path().apply {
@@ -676,7 +648,7 @@ private fun DrawScope.drawBarSymbol(c: Offset, r: Float) {
     }
     drawPath(pathB, color = letterColor, style = letterStyle)
 
-    // Pismeno A (uprostred)
+    // Pismeno A
     val axL = c.x - w * 0.09f
     val axM = c.x
     val axR = c.x + w * 0.09f
@@ -689,7 +661,7 @@ private fun DrawScope.drawBarSymbol(c: Offset, r: Float) {
     }
     drawPath(pathA, color = letterColor, style = letterStyle)
 
-    // Pismeno R (vpravo)
+    // Pismeno R
     val rxL = c.x + w * 0.16f
     val rxR = c.x + w * 0.34f
     val pathR = Path().apply {
@@ -715,13 +687,11 @@ private fun DrawScope.drawSevenSymbol(c: Offset, r: Float) {
         lineTo(c.x - r * 0.72f, c.y - r * 0.35f)
         close()
     }
-    // Zlaty 3D stin
     drawPath(
         path = sevenPath,
         color = Color(0xFFFFD700),
         style = Stroke(width = r * 0.18f, join = StrokeJoin.Round)
     )
-    // Ohnive cervena vypln sedmicky
     drawPath(
         path = sevenPath,
         brush = Brush.verticalGradient(
@@ -733,7 +703,6 @@ private fun DrawScope.drawSevenSymbol(c: Offset, r: Float) {
 }
 
 private fun DrawScope.drawJokerSymbol(c: Offset, r: Float) {
-    // Zlato-cervena peticipa hvezda zolika
     val starPath = Path()
     val outerR = r * 0.88f
     val innerR = r * 0.40f
@@ -760,7 +729,6 @@ private fun DrawScope.drawJokerSymbol(c: Offset, r: Float) {
         style = Stroke(width = r * 0.10f, join = StrokeJoin.Round)
     )
 
-    // Rubin uprostred zolika
     drawCircle(
         color = Color(0xFFD50000),
         radius = r * 0.28f,

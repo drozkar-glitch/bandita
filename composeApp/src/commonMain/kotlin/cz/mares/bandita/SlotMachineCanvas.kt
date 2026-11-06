@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -194,7 +193,7 @@ fun SlotMachineReelsCanvas(
             )
         }
 
-        // 3) Vodicí linky 5 vyhernich linii na okrajich + zvyrazneni vyher
+        // 3) Vodici linky 5 vyhernich linii na okrajich + zvyrazneni vyher
         val rowCentersY = List(3) { r -> windowTop + reelGap + r * cellHeight + cellHeight * 0.5f }
         val reelCentersX = List(3) { c -> windowLeft + reelGap + c * (reelWidth + reelGap) + reelWidth * 0.5f }
 
@@ -512,7 +511,7 @@ private fun DrawScope.drawPlumSymbol(c: Offset, r: Float) {
 }
 
 private fun DrawScope.drawGrapesSymbol(c: Offset, r: Float) {
-    // Stopka a listek nahore
+    // Stopka nahore
     drawLine(
         color = Color(0xFF4E342E),
         start = Offset(c.x, c.y - r * 0.55f),
@@ -570,7 +569,7 @@ private fun DrawScope.drawMelonSymbol(c: Offset, r: Float) {
             cap = StrokeCap.Round
         )
     }
-    // Vykrojena cervena slupka uprostred
+    // Vykrojena cervena duzina uprostred
     val sliceW = w * 0.72f
     val sliceH = h * 0.56f
     drawOval(
@@ -623,37 +622,86 @@ private fun DrawScope.drawBellSymbol(c: Offset, r: Float) {
 }
 
 private fun DrawScope.drawBarSymbol(c: Offset, r: Float) {
-    val w = r * 1.76f
-    val h = r * 1.05f
+    val w = r * 1.78f
+    val h = r * 1.08f
     val topLeft = Offset(c.x - w / 2f, c.y - h / 2f)
 
-    // Zlaty ramecek
+    // Zlaty 3D ramecek cihlicky BAR
     drawRoundRect(
-        color = Color(0xFFFFD700),
+        brush = Brush.linearGradient(
+            listOf(Color(0xFFFFF59D), Color(0xFFFFB300), Color(0xFFF57F17))
+        ),
         topLeft = Offset(topLeft.x - 3f, topLeft.y - 3f),
         size = Size(w + 6f, h + 6f),
         cornerRadius = CornerRadius(10f, 10f)
     )
-    // Cerny poklad BAR
+    // Cerny podklad BAR
     drawRoundRect(
-        color = Color(0xFF1A1A1A),
+        color = Color(0xFF141414),
         topLeft = topLeft,
         size = Size(w, h),
         cornerRadius = CornerRadius(8f, 8f)
     )
-    // Tri vodorovne zlate pruhy symbolizujici 3x BAR cihlicku
-    val barH = h * 0.20f
-    for (idx in 0..2) {
-        val by = topLeft.y + h * 0.14f + idx * (barH + h * 0.06f)
-        drawRoundRect(
-            brush = Brush.horizontalGradient(
-                listOf(Color(0xFFFFD54F), Color(0xFFFFFFFF), Color(0xFFFFB300))
-            ),
-            topLeft = Offset(topLeft.x + w * 0.12f, by),
-            size = Size(w * 0.76f, barH),
-            cornerRadius = CornerRadius(4f, 4f)
-        )
+    // Vnitrni zlata linka
+    drawRoundRect(
+        color = Color(0xFFFFD54F),
+        topLeft = Offset(topLeft.x + 3.5f, topLeft.y + 3.5f),
+        size = Size(w - 7f, h - 7f),
+        cornerRadius = CornerRadius(6f, 6f),
+        style = Stroke(width = 1.5f)
+    )
+
+    // Vektorove vykresleni pismen B - A - R uvnitr tabulky
+    val strokeW = (r * 0.115f).coerceAtLeast(2.2f)
+    val letterStyle = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
+    val letterColor = Color(0xFFFFEA00)
+
+    val topY = c.y - h * 0.25f
+    val midY = c.y
+    val botY = c.y + h * 0.25f
+
+    // Pismeno B (vlevo)
+    val bxL = c.x - w * 0.34f
+    val bxR = c.x - w * 0.15f
+    val pathB = Path().apply {
+        moveTo(bxL, topY)
+        lineTo(bxL, botY)
+        moveTo(bxL, topY)
+        lineTo(bxR - strokeW * 0.3f, topY)
+        quadraticBezierTo(bxR + strokeW * 0.5f, (topY + midY) * 0.5f, bxR - strokeW * 0.3f, midY)
+        lineTo(bxL, midY)
+        moveTo(bxR - strokeW * 0.2f, midY)
+        quadraticBezierTo(bxR + strokeW * 0.6f, (midY + botY) * 0.5f, bxR - strokeW * 0.2f, botY)
+        lineTo(bxL, botY)
     }
+    drawPath(pathB, color = letterColor, style = letterStyle)
+
+    // Pismeno A (uprostred)
+    val axL = c.x - w * 0.09f
+    val axM = c.x
+    val axR = c.x + w * 0.09f
+    val pathA = Path().apply {
+        moveTo(axL, botY)
+        lineTo(axM, topY)
+        lineTo(axR, botY)
+        moveTo(axL + (axR - axL) * 0.22f, midY + (botY - midY) * 0.3f)
+        lineTo(axR - (axR - axL) * 0.22f, midY + (botY - midY) * 0.3f)
+    }
+    drawPath(pathA, color = letterColor, style = letterStyle)
+
+    // Pismeno R (vpravo)
+    val rxL = c.x + w * 0.16f
+    val rxR = c.x + w * 0.34f
+    val pathR = Path().apply {
+        moveTo(rxL, botY)
+        lineTo(rxL, topY)
+        lineTo(rxR - strokeW * 0.3f, topY)
+        quadraticBezierTo(rxR + strokeW * 0.5f, (topY + midY) * 0.5f, rxR - strokeW * 0.3f, midY)
+        lineTo(rxL, midY)
+        moveTo(rxL + (rxR - rxL) * 0.35f, midY)
+        lineTo(rxR, botY)
+    }
+    drawPath(pathR, color = letterColor, style = letterStyle)
 }
 
 private fun DrawScope.drawSevenSymbol(c: Offset, r: Float) {
@@ -685,7 +733,7 @@ private fun DrawScope.drawSevenSymbol(c: Offset, r: Float) {
 }
 
 private fun DrawScope.drawJokerSymbol(c: Offset, r: Float) {
-    // Zlato-fialova peticipa hvezda + kasparovska cepice s rolnickami
+    // Zlato-cervena peticipa hvezda zolika
     val starPath = Path()
     val outerR = r * 0.88f
     val innerR = r * 0.40f
@@ -712,7 +760,7 @@ private fun DrawScope.drawJokerSymbol(c: Offset, r: Float) {
         style = Stroke(width = r * 0.10f, join = StrokeJoin.Round)
     )
 
-    // Rubín uprostred zolika
+    // Rubin uprostred zolika
     drawCircle(
         color = Color(0xFFD50000),
         radius = r * 0.28f,

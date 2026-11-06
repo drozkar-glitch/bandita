@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -160,7 +161,6 @@ fun App() {
 
         fun triggerGambleRisk(chooseRed: Boolean) {
             if (pendingWin <= 0 || anySpinning) return
-            // 50/50 poctiva sance na zdvojnasobeni
             val drawnRed = Random.nextBoolean()
             riskLampIsRed = drawnRed
             if (drawnRed == chooseRed) {
@@ -171,9 +171,8 @@ fun App() {
                 )
                 statusBanner = "RISK VYŠEL! VÝHRA NÁSOBENA NA $pendingWin!"
                 if (riskStepCount >= 5) {
-                    // Po 5 uspesnych nasobenich automaticky vyplatime strop
                     val updated = credits + pendingWin
-                    statusBanner = "MAX RISK БONUS! PŘIPSÁNO +$pendingWin!"
+                    statusBanner = "MAX RISK BONUS! PŘIPSÁNO +$pendingWin!"
                     pendingWin = 0
                     riskStepCount = 0
                     syncCreditsAndRecord(updated)
@@ -199,7 +198,7 @@ fun App() {
             }
 
             if (credits < currentBet) {
-                statusBanner = "NEDOSTATEK KREDITU PRO SÁZKU $currentBet! SNIŽ SÁZKU NEBO DOPLŇ KREDIT."
+                statusBanner = "MÁLO KREDITU PRO SÁZKU $currentBet! SNIŽ SÁZKU."
                 PlatformServices.playSound(BanditaSound.RISK_LOSE)
                 return
             }
@@ -209,7 +208,6 @@ fun App() {
             statusBanner = "VÁLCE SE TOČÍ... HODNĚ ŠTĚSTÍ!"
 
             scope.launch {
-                // Animace zatazeni za paku
                 for (step in 1..5) {
                     leverPullProgress = step / 5f
                     delay(22L)
@@ -226,7 +224,7 @@ fun App() {
                     spinningReels[i] = !(activeHold && heldReels[i])
                 }
 
-                // Postupne zastavovani valcu 1 -> 2 -> 3 jako na opravdovem automatu
+                // Postupne zastavovani valcu 1 -> 2 -> 3
                 for (i in 0..2) {
                     if (spinningReels[i]) {
                         delay(if (i == 0) 480L else 380L)
@@ -262,22 +260,21 @@ fun App() {
                     }
 
                     val winNames = results.joinToString(" + ") { "${it.symbol.titleCz} (${it.winAmount})" }
-                    statusBanner = "VÝHRA $totalWin! ($winNames) — VZÍT NEBO RISK 2×?"
+                    statusBanner = "VÝHRA $totalWin! ($winNames)"
                 } else {
-                    // Pokud nepadla vyhra a v tomto kole se nedrzel HOLD, nabidneme HOLD pro dalsi kolo (cca 65 % pripadu)
                     if (!activeHold && !usedHoldThisTurn && Random.nextFloat() < 0.65f) {
                         canHoldNow = true
                         val suggested = SlotMachineRules.suggestHoldReels(reels.toList())
                         for (i in 0..2) heldReels[i] = suggested[i]
                         usedHoldThisTurn = true
-                        statusBanner = "MŮŽEŠ PODRŽET VÁLCE (HOLD 1–3) PRO DALŠÍ ZATOČENÍ!"
+                        statusBanner = "PODRŽ VÁLCE (HOLD 1–3) PRO DALŠÍ TAH!"
                     } else {
                         canHoldNow = false
                         heldReels[0] = false
                         heldReels[1] = false
                         heldReels[2] = false
                         usedHoldThisTurn = false
-                        statusBanner = "ZKUS ŠTĚSTÍ ZNOVU! ZATÁHNI ZA PÁKU NEBO STISKNI START."
+                        statusBanner = "ZKUS ŠTĚSTÍ ZNOVU! STISKNI START."
                     }
                 }
             }
@@ -306,7 +303,7 @@ fun App() {
                         )
                     )
                     .windowInsetsPadding(WindowInsets.safeDrawing)
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 when (currentScreen) {
@@ -325,7 +322,7 @@ fun App() {
                             }
                         )
 
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(5.dp))
 
                         // 2) Digitalni 7-segmentova LED palubka (KREDIT, SÁZKA, VÝHRA, REKORD)
                         DigitalLedDashboard(
@@ -337,10 +334,10 @@ fun App() {
 
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        // Rychly prehled nasobicu pod displejem
+                        // Dvouřádkový přehledný rozpis výher pod displejem (bez zalamování)
                         MiniPaytableStrip(currentBet = currentBet)
 
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(5.dp))
 
                         // 3) Hlavni okno 3 valcu s pakou
                         Box(
@@ -383,13 +380,13 @@ fun App() {
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(5.dp))
 
-                        // 5) Trojice podsvicenych tlacitek HOLD 1, HOLD 2, HOLD 3
+                        // 5) Trojice podsvicenych tlacitek HOLD 1, HOLD 2, HOLD 3 zarovnana pod valci
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(end = 28.dp),
+                                .padding(end = 30.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             for (idx in 0..2) {
@@ -402,7 +399,7 @@ fun App() {
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(36.dp)
+                                        .height(35.dp)
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(bgColor)
                                         .border(
@@ -411,10 +408,8 @@ fun App() {
                                             shape = RoundedCornerShape(8.dp)
                                         )
                                         .clickable(enabled = canHoldNow && !anySpinning) {
-                                            // Na klasickem automatu lze drzet max 2 valce najednou
                                             val currentlyHeldCount = heldReels.count { it }
                                             if (!heldReels[idx] && currentlyHeldCount >= 2) {
-                                                // Uvolnime prvni drzeny a zapneme novy
                                                 val firstHeld = heldReels.indexOfFirst { it }
                                                 if (firstHeld >= 0) heldReels[firstHeld] = false
                                             }
@@ -424,18 +419,19 @@ fun App() {
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = if (isHeld) "HOLD ${idx + 1} [DRŽÍ]" else "HOLD ${idx + 1}",
+                                        text = if (isHeld) "HOLD ${idx + 1} ●" else "HOLD ${idx + 1}",
                                         color = if (isHeld) Color(0xFF1A092B) else Color(0xFFE0E0E0),
                                         fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1
                                     )
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(5.dp))
 
-                        // 6) Pokud je aktivni vyhra (pendingWin > 0), zobrazime panel RISK 2x (ČERVENÁ / ČERNÁ / VZÍT)
+                        // 6) Panel RISK 2x (ČERVENÁ / ČERNÁ / VZÍT) pokud je aktivni vyhra
                         if (pendingWin > 0) {
                             RiskGambleControlRow(
                                 pendingWin = pendingWin,
@@ -444,7 +440,7 @@ fun App() {
                                 onPickBlack = { triggerGambleRisk(false) },
                                 onCollect = { collectPendingWin() }
                             )
-                            Spacer(modifier = Modifier.height(6.dp))
+                            Spacer(modifier = Modifier.height(5.dp))
                         }
 
                         // 7) Hlavni arkadovy pult (SÁZKA, DOPLNIT KREDIT, START)
@@ -453,7 +449,7 @@ fun App() {
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Prepinac SÁZKA (BET)
+                            // Prepinac SÁZKA (BET) s kompaktnim contentPadding, aby se cislo nikdy neurizlo
                             Button(
                                 onClick = {
                                     if (!anySpinning) {
@@ -464,17 +460,27 @@ fun App() {
                                 enabled = !anySpinning,
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
                                 shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(50.dp)
+                                    .height(48.dp)
                             ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("SÁZKA (BET)", fontSize = 10.sp, color = Color(0xFFBBDEFB))
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = "SÁZKA (BET)",
+                                        fontSize = 9.sp,
+                                        color = Color(0xFFBBDEFB),
+                                        maxLines = 1
+                                    )
                                     Text(
                                         text = "$currentBet KREDITŮ",
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White
+                                        color = Color.White,
+                                        maxLines = 1
                                     )
                                 }
                             }
@@ -486,19 +492,21 @@ fun App() {
                                         PlatformServices.playSound(BanditaSound.WIN_SMALL)
                                         credits = 100
                                         PlatformServices.saveCredits(100)
-                                        statusBanner = "VHOZENA MINCE: +100 KREDITŮ PRO HŘE!"
+                                        statusBanner = "VHOZENA MINCE: +100 KREDITŮ DO HRY!"
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A)),
                                     shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .height(50.dp)
+                                        .weight(0.95f)
+                                        .height(48.dp)
                                 ) {
                                     Text(
                                         text = "+100 KREDIT",
-                                        fontSize = 12.sp,
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFFFFEA00)
+                                        color = Color(0xFFFFEA00),
+                                        maxLines = 1
                                     )
                                 }
                             }
@@ -511,16 +519,18 @@ fun App() {
                                     containerColor = if (pendingWin > 0) Color(0xFFFF8F00) else Color(0xFF2E7D32)
                                 ),
                                 shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                 modifier = Modifier
                                     .weight(1.35f)
-                                    .height(50.dp)
+                                    .height(48.dp)
                                     .border(2.dp, Color(0xFFFFD700), RoundedCornerShape(10.dp))
                             ) {
                                 Text(
                                     text = if (pendingWin > 0) "VZÍT & START" else "★ START ★",
-                                    fontSize = 16.sp,
+                                    fontSize = 15.sp,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White
+                                    color = Color.White,
+                                    maxLines = 1
                                 )
                             }
                         }
@@ -577,7 +587,7 @@ fun App() {
                     }
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(
                     text = "© 2026 Created by Pavel Mareš",
                     color = Color(0xFF9E86B8),
@@ -605,9 +615,9 @@ private fun TopCabinetHeader(
                 RoundedCornerShape(12.dp)
             )
             .border(2.dp, Color(0xFFFFD700), RoundedCornerShape(12.dp))
-            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .padding(horizontal = 8.dp, vertical = 5.dp)
     ) {
-        // Rada blikajicich pouťovych zarovicek
+        // Rada blikajicich poutovych zarovicek
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -617,7 +627,7 @@ private fun TopCabinetHeader(
                 val lit = (b % 2 == 0) == blinkPhase
                 Box(
                     modifier = Modifier
-                        .size(7.dp)
+                        .size(6.dp)
                         .clip(CircleShape)
                         .background(if (lit) Color(0xFFFFEA00) else Color(0xFF5D4037))
                 )
@@ -637,23 +647,28 @@ private fun TopCabinetHeader(
                     .background(Color(0xFF2D124D))
                     .border(1.dp, Color(0xFFFFD54F), RoundedCornerShape(6.dp))
                     .clickable { onOpenPaytable() }
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .padding(horizontal = 7.dp, vertical = 4.dp)
             ) {
                 Text(
                     text = "VÝPLATY",
                     color = Color(0xFFFFF59D),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
                 )
             }
 
             Text(
                 text = "★ JEDNORUKÝ BANDITA ★",
                 color = Color(0xFFFFD700),
-                fontSize = 15.sp,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.ExtraBold,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f)
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 4.dp)
             )
 
             Box(
@@ -662,13 +677,14 @@ private fun TopCabinetHeader(
                     .background(Color(0xFF2D124D))
                     .border(1.dp, Color(0xFFFFD54F), RoundedCornerShape(6.dp))
                     .clickable { onOpenLeaderboard() }
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .padding(horizontal = 7.dp, vertical = 4.dp)
             ) {
                 Text(
                     text = "TOP 50",
                     color = Color(0xFF80D8FF),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
                 )
             }
         }
@@ -724,14 +740,15 @@ private fun LedBox(
         modifier = modifier
             .background(Color(0xFF09030E), RoundedCornerShape(8.dp))
             .border(1.5.dp, Color(0xFF795548), RoundedCornerShape(8.dp))
-            .padding(vertical = 4.dp, horizontal = 4.dp),
+            .padding(vertical = 3.dp, horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
             text = label,
             color = Color(0xFFBDBDBD),
             fontSize = 9.sp,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            maxLines = 1
         )
         Text(
             text = value,
@@ -746,20 +763,56 @@ private fun LedBox(
 
 @Composable
 private fun MiniPaytableStrip(currentBet: Int) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(Color(0xFF1A0B2E), RoundedCornerShape(6.dp))
             .border(1.dp, Color(0xFF4A148C), RoundedCornerShape(6.dp))
-            .padding(horizontal = 6.dp, vertical = 3.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        Text("★JOKER: ${200 * currentBet}", color = Color(0xFFFFEA00), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-        Text("777: ${100 * currentBet}", color = Color(0xFFFF5252), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-        Text("BAR: ${50 * currentBet}", color = Color(0xFFFFD54F), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-        Text("ZVON: ${30 * currentBet}", color = Color(0xFF81C784), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-        Text("MELOUN: ${20 * currentBet}", color = Color(0xFF4FC3F7), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        // 1. radek: 5 nejvyssich symbolu
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            MiniPayItem("★JOKER", 200 * currentBet, Color(0xFFFFEA00), Modifier.weight(1.15f))
+            MiniPayItem("777", 100 * currentBet, Color(0xFFFF5252), Modifier.weight(0.95f))
+            MiniPayItem("BAR", 50 * currentBet, Color(0xFFFFD54F), Modifier.weight(0.95f))
+            MiniPayItem("ZVON", 30 * currentBet, Color(0xFF81C784), Modifier.weight(1f))
+            MiniPayItem("MELOUN", 20 * currentBet, Color(0xFF4FC3F7), Modifier.weight(1.1f))
+        }
+        // 2. radek: 5 ovocnych symbolu
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            MiniPayItem("HROZNY", 12 * currentBet, Color(0xFFCE93D8), Modifier.weight(1.15f))
+            MiniPayItem("ŠVESTKA", 8 * currentBet, Color(0xFFB39DDB), Modifier.weight(1.05f))
+            MiniPayItem("POMER.", 6 * currentBet, Color(0xFFFFB74D), Modifier.weight(1f))
+            MiniPayItem("CITRÓN", 4 * currentBet, Color(0xFFFFF176), Modifier.weight(1f))
+            MiniPayItem("TŘEŠNĚ", 4 * currentBet, Color(0xFFFF8A80), Modifier.weight(1.05f))
+        }
     }
+}
+
+@Composable
+private fun MiniPayItem(
+    label: String,
+    payout: Int,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = "$label:$payout",
+        color = color,
+        fontSize = 9.sp,
+        fontWeight = FontWeight.Bold,
+        textAlign = TextAlign.Center,
+        maxLines = 1,
+        overflow = TextOverflow.Clip,
+        modifier = modifier
+    )
 }
 
 @Composable
@@ -775,7 +828,7 @@ private fun RiskGambleControlRow(
             .fillMaxWidth()
             .background(Color(0xFF260E3A), RoundedCornerShape(10.dp))
             .border(1.5.dp, Color(0xFFFFEA00), RoundedCornerShape(10.dp))
-            .padding(6.dp),
+            .padding(5.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -786,15 +839,17 @@ private fun RiskGambleControlRow(
                 containerColor = if (riskLampIsRed) Color(0xFFD50000) else Color(0xFF6A0000)
             ),
             shape = RoundedCornerShape(8.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
             modifier = Modifier
                 .weight(1f)
-                .height(42.dp)
+                .height(40.dp)
         ) {
             Text(
                 text = "♥ RISK 2× (${pendingWin * 2})",
-                fontSize = 11.sp,
+                fontSize = 10.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = Color.White
+                color = Color.White,
+                maxLines = 1
             )
         }
 
@@ -805,15 +860,17 @@ private fun RiskGambleControlRow(
                 containerColor = if (!riskLampIsRed) Color(0xFF37474F) else Color(0xFF1C262B)
             ),
             shape = RoundedCornerShape(8.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
             modifier = Modifier
                 .weight(1f)
-                .height(42.dp)
+                .height(40.dp)
         ) {
             Text(
                 text = "♠ RISK 2× (${pendingWin * 2})",
-                fontSize = 11.sp,
+                fontSize = 10.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = Color.White
+                color = Color.White,
+                maxLines = 1
             )
         }
 
@@ -822,15 +879,17 @@ private fun RiskGambleControlRow(
             onClick = onCollect,
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF8F00)),
             shape = RoundedCornerShape(8.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
             modifier = Modifier
-                .weight(0.95f)
-                .height(42.dp)
+                .weight(0.9f)
+                .height(40.dp)
         ) {
             Text(
                 text = "VZÍT ($pendingWin)",
-                fontSize = 11.sp,
+                fontSize = 10.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = Color(0xFF1A092B)
+                color = Color(0xFF1A092B),
+                maxLines = 1
             )
         }
     }

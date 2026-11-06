@@ -1,0 +1,4 @@
+// Konfigurace Xcode pro Jednoruky Bandita (cz.mares.bandita)
+TEAM_ID=
+BUNDLE_ID=cz.mares.bandita
+APP_NAME=JednorukyBandita

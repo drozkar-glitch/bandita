@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Zlata koruna / ramecek valce -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M24,26h60v56h-60z" />
+    <path
+        android:fillColor="#FFF8DC"
+        android:pathData="M28,30h52v48h-52z" />
+    <!-- Cervena sedmicka 7 -->
+    <path
+        android:fillColor="#E60026"
+        android:pathData="M34,36h26v8l-14,28h-9l13,-27h-16z" />
+    <!-- Tresne vpravo dole -->
+    <path
+        android:strokeColor="#2E7D32"
+        android:strokeWidth="2.5"
+        android:pathData="M64,58 C64,46 70,40 72,36 M74,60 C74,48 72,42 72,36" />
+    <path
+        android:fillColor="#D50000"
+        android:pathData="M58,62a6,6 0 1,0 12,0a6,6 0 1,0 -12,0" />
+    <path
+        android:fillColor="#B71C1C"
+        android:pathData="M68,64a6,6 0 1,0 12,0a6,6 0 1,0 -12,0" />
+</vector>

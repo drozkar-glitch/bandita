@@ -42,8 +42,8 @@ fun SlotMachineReelsCanvas(
     Canvas(
         modifier = modifier.pointerInput(reelCount, canHoldNow) {
             detectTapGestures { tapOffset ->
-                val w = size.width
-                val h = size.height
+                val w = size.width.toFloat()
+                val h = size.height.toFloat()
                 val cabinetWidth = w * 0.90f
                 if (tapOffset.x > w * 0.88f) {
                     onLeverPulled()

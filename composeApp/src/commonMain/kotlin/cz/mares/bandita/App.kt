@@ -67,34 +67,39 @@ fun App() {
         var currentScreen by remember { mutableStateOf(BanditaScreen.CABINET) }
         var machineMode by remember { mutableStateOf(MachineMode.CLASSIC_3V) }
 
-        // Stav automatu
-        var credits by remember { mutableStateOf(PlatformServices.getSavedCredits().coerceAtLeast(20)) }
+        // Stav automatu a ukladani rekordu pro vsechny 4 hry
+        var credits by remember { mutableStateOf(PlatformServices.getSavedCredits().coerceAtLeast(50)) }
         var highScore3V by remember { mutableStateOf(maxOf(PlatformServices.getHighScore("bandita"), credits)) }
         var highScore4V by remember { mutableStateOf(maxOf(PlatformServices.getHighScore("bandita_super"), credits)) }
+        var highScore27 by remember { mutableStateOf(maxOf(PlatformServices.getHighScore("bandita_crisscross"), credits)) }
+        var highScore5V by remember { mutableStateOf(maxOf(PlatformServices.getHighScore("bandita_vegas5"), credits)) }
 
         var betIndex by remember { mutableStateOf(2) } // vychozi sazka 5
         val currentBet = SlotMachineRules.BET_OPTIONS[betIndex]
 
         var pendingWin by remember { mutableStateOf(0) }
         var supermeter by remember { mutableStateOf(0) }
+        var freeSpinsRemaining by remember { mutableStateOf(0) }
         var riskStepCount by remember { mutableStateOf(0) }
         var statusBanner by remember { mutableStateOf("ZATÁHNI ZA PÁKU NEBO STISKNI START!") }
 
-        // Mrizka az pro 4 valce x 3 symboly
+        // Mrizka pro az 5 valcu x 3 symboly (kazdy valec ma 3 ruzne symboly)
         val reels = remember {
             mutableStateListOf(
                 listOf(SlotSymbol.CHERRY, SlotSymbol.SEVEN, SlotSymbol.LEMON),
                 listOf(SlotSymbol.ORANGE, SlotSymbol.SEVEN, SlotSymbol.PLUM),
                 listOf(SlotSymbol.MELON, SlotSymbol.SEVEN, SlotSymbol.BELL),
-                listOf(SlotSymbol.GRAPES, SlotSymbol.SEVEN, SlotSymbol.BAR)
+                listOf(SlotSymbol.GRAPES, SlotSymbol.SEVEN, SlotSymbol.BAR),
+                listOf(SlotSymbol.LEMON, SlotSymbol.SEVEN, SlotSymbol.CHERRY)
             )
         }
-        val spinningReels = remember { mutableStateListOf(false, false, false, false) }
-        val reelPhaseOffsets = remember { mutableStateListOf(0f, 0f, 0f, 0f) }
+        val spinningReels = remember { mutableStateListOf(false, false, false, false, false) }
+        val reelPhaseOffsets = remember { mutableStateListOf(0f, 0f, 0f, 0f, 0f) }
 
-        // HOLD (podrzeni valcu)
+        // HOLD (podrzeni valcu) + doporucene TIP valce
         var canHoldNow by remember { mutableStateOf(false) }
-        val heldReels = remember { mutableStateListOf(false, false, false, false) }
+        val heldReels = remember { mutableStateListOf(false, false, false, false, false) }
+        val suggestedHoldReels = remember { mutableStateListOf(false, false, false, false, false) }
         var usedHoldThisTurn by remember { mutableStateOf(false) }
 
         // Horni druhe kolo (pro SUPER 4V)
@@ -118,7 +123,7 @@ fun App() {
 
         val anySpinning = spinningReels.any { it } || isWheelSpinning
 
-        // Animacni smycka pro blikani zarovek + chytlavy 90s rytmicky zvuk pri aktivnim RISKU!
+        // Animacni smycka pro blikani zarovek + chytlavy 90s rytmicky zvuk pri aktivnim RISKU
         LaunchedEffect(currentScreen, pendingWin, anySpinning) {
             while (true) {
                 delay(270L)
@@ -137,7 +142,7 @@ fun App() {
         LaunchedEffect(reelsSpinningNow) {
             var tickCounter = 0
             while (spinningReels.any { it }) {
-                for (i in 0..3) {
+                for (i in 0..4) {
                     if (spinningReels[i]) {
                         reelPhaseOffsets[i] = reelPhaseOffsets[i] + 0.36f
                     }
@@ -150,28 +155,70 @@ fun App() {
             }
         }
 
+        fun getHighScoreForMode(mode: MachineMode): Int = when (mode) {
+            MachineMode.CLASSIC_3V -> highScore3V
+            MachineMode.SUPER_4V -> highScore4V
+            MachineMode.CRISSCROSS_27 -> highScore27
+            MachineMode.VEGAS_5V -> highScore5V
+        }
+
         fun syncCreditsAndRecord(newCredits: Int) {
             credits = newCredits
             PlatformServices.saveCredits(newCredits)
             val totalWealth = newCredits + supermeter
 
-            if (machineMode == MachineMode.CLASSIC_3V) {
-                if (totalWealth > highScore3V) {
+            when (machineMode) {
+                MachineMode.CLASSIC_3V -> if (totalWealth > highScore3V) {
                     highScore3V = totalWealth
                     PlatformServices.saveHighScore(totalWealth, "bandita")
                     if (savedNick.isNotBlank()) {
                         PlatformServices.submitScore("bandita", savedNick, totalWealth) { _, _ -> }
                     }
                 }
-            } else {
-                if (totalWealth > highScore4V) {
+                MachineMode.SUPER_4V -> if (totalWealth > highScore4V) {
                     highScore4V = totalWealth
                     PlatformServices.saveHighScore(totalWealth, "bandita_super")
                     if (savedNick.isNotBlank()) {
                         PlatformServices.submitScore("bandita_super", savedNick, totalWealth) { _, _ -> }
                     }
                 }
+                MachineMode.CRISSCROSS_27 -> if (totalWealth > highScore27) {
+                    highScore27 = totalWealth
+                    PlatformServices.saveHighScore(totalWealth, "bandita_crisscross")
+                    if (savedNick.isNotBlank()) {
+                        PlatformServices.submitScore("bandita_crisscross", savedNick, totalWealth) { _, _ -> }
+                    }
+                }
+                MachineMode.VEGAS_5V -> if (totalWealth > highScore5V) {
+                    highScore5V = totalWealth
+                    PlatformServices.saveHighScore(totalWealth, "bandita_vegas5")
+                    if (savedNick.isNotBlank()) {
+                        PlatformServices.submitScore("bandita_vegas5", savedNick, totalWealth) { _, _ -> }
+                    }
+                }
             }
+        }
+
+        fun clearHoldState() {
+            canHoldNow = false
+            usedHoldThisTurn = false
+            for (i in 0..4) {
+                heldReels[i] = false
+                suggestedHoldReels[i] = false
+            }
+        }
+
+        fun toggleReelHold(reelIdx: Int) {
+            val activeReelCount = machineMode.reelCount
+            if (!canHoldNow || anySpinning || reelIdx !in 0 until activeReelCount) return
+            val maxHoldAllowed = activeReelCount - 1
+            val currentlyHeldCount = heldReels.take(activeReelCount).count { it }
+            if (!heldReels[reelIdx] && currentlyHeldCount >= maxHoldAllowed) {
+                val firstHeld = heldReels.take(activeReelCount).indexOfFirst { it }
+                if (firstHeld >= 0) heldReels[firstHeld] = false
+            }
+            heldReels[reelIdx] = !heldReels[reelIdx]
+            PlatformServices.playSound(BanditaSound.HOLD_LOCK)
         }
 
         fun collectPendingWin() {
@@ -188,33 +235,45 @@ fun App() {
             if (pendingWin <= 0) return
             PlatformServices.playSound(BanditaSound.SUPER_TRANSFER)
             supermeter += pendingWin
-            statusBanner = "PŘEVEDENO +$pendingWin DO SUPERMETRU! ROZTOČ HORNÍ KOLO!"
+            statusBanner = "PŘEVEDENO +$pendingWin DO SUPERMETRU! ROZTOČ DRUHÉ KOLO!"
             pendingWin = 0
             riskStepCount = 0
             syncCreditsAndRecord(credits)
         }
 
         fun cashOutSupermeter() {
-            if (supermeter <= 0 || anySpinning) return
+            if (supermeter <= 0 && pendingWin <= 0) return
+            if (anySpinning) return
             PlatformServices.playSound(BanditaSound.WIN_BIG)
-            val amount = supermeter
+            val amount = supermeter + pendingWin
             supermeter = 0
+            pendingWin = 0
+            riskStepCount = 0
             val updated = credits + amount
-            statusBanner = "SUPERMETR +$amount VYPLACEN DO KREDITU!"
+            statusBanner = "VYPLACENO +$amount ZPĚT DO KREDITU!"
             syncCreditsAndRecord(updated)
         }
 
         fun spinUpperBonusWheel() {
             val wheelCost = currentBet * 2
             if (anySpinning) return
+
+            // Pokud mel hrac nerozehranou vyhru v pendingWin, nejprve ji pripocteme do Supermetru, aby o ni neprisel
+            if (pendingWin > 0) {
+                supermeter += pendingWin
+                pendingWin = 0
+                riskStepCount = 0
+            }
+
             if (supermeter < wheelCost) {
-                statusBanner = "PRO HORNÍ KOLO POTŘEBUJEŠ V SUPERMETRU ASPOŇ $wheelCost!"
+                statusBanner = "PRO DRUHÉ KOLO POTŘEBUJEŠ V SUPERMETRU ASPOŇ $wheelCost!"
                 PlatformServices.playSound(BanditaSound.RISK_LOSE)
                 return
             }
 
             supermeter -= wheelCost
             isWheelSpinning = true
+            winningLines = emptyList()
             statusBanner = "HORNÍ DRUHÉ KOLO SE TOČÍ..."
 
             scope.launch {
@@ -226,7 +285,7 @@ fun App() {
                     val waitMs = when {
                         step < totalSteps - 8 -> 65L
                         step < totalSteps - 4 -> 130L
-                        else -> 220L
+                        else -> 215L
                     }
                     delay(waitMs)
                 }
@@ -243,16 +302,16 @@ fun App() {
                 pendingWin += wheelWin
                 riskStepCount = 0
 
-                if (wheelWin >= currentBet * 15) {
+                if (landed.isJackpot || wheelWin >= currentBet * 15) {
                     PlatformServices.playSound(BanditaSound.JACKPOT_777)
                 } else {
                     PlatformServices.playSound(BanditaSound.WIN_BIG)
                 }
 
-                statusBanner = if (landed.isMystery) {
-                    "★ MYSTERY BONUS ★ VYLOSOVÁNO +$wheelWin!"
-                } else {
-                    "DRUHÉ KOLO (${landed.label}): VÝHRA +$wheelWin!"
+                statusBanner = when {
+                    landed.isMystery -> "★ MYSTERY BONUS ★ VYLOSOVÁNO +$wheelWin!"
+                    landed.isJackpot -> "★ JOKER JACKPOT KOLA (${landed.baseMultiplier}×) ★ VÝHRA +$wheelWin!"
+                    else -> "DRUHÉ KOLO (${landed.baseMultiplier}× SÁZKA): VÝHRA +$wheelWin!"
                 }
             }
         }
@@ -293,6 +352,7 @@ fun App() {
             if (anySpinning) return
             val activeReelCount = machineMode.reelCount
 
+            // Pokud mel hrac nevybranou vyhru a stiskl START, nejprve ji bezpecne pripiseme do kreditu
             if (pendingWin > 0) {
                 val updated = credits + pendingWin
                 pendingWin = 0
@@ -300,15 +360,25 @@ fun App() {
                 syncCreditsAndRecord(updated)
             }
 
-            if (credits < currentBet) {
-                statusBanner = "MÁLO KREDITU PRO SÁZKU $currentBet! SNIŽ SÁZKU."
-                PlatformServices.playSound(BanditaSound.RISK_LOSE)
-                return
+            val isFreeSpinTurn = (machineMode == MachineMode.VEGAS_5V && freeSpinsRemaining > 0)
+
+            if (!isFreeSpinTurn) {
+                if (credits < currentBet) {
+                    statusBanner = "MÁLO KREDITU PRO SÁZKU $currentBet! SNIŽ SÁZKU NEBO VHOĎ MINCI."
+                    PlatformServices.playSound(BanditaSound.RISK_LOSE)
+                    return
+                }
+                syncCreditsAndRecord(credits - currentBet)
+            } else {
+                freeSpinsRemaining -= 1
             }
 
-            syncCreditsAndRecord(credits - currentBet)
             winningLines = emptyList()
-            statusBanner = "VÁLCE SE TOČÍ... HODNĚ ŠTĚSTÍ!"
+            statusBanner = if (isFreeSpinTurn) {
+                "★ FREE SPIN (ZBÝVÁ $freeSpinsRemaining) – VŠECHNY VÝHRY 3×! ★"
+            } else {
+                "VÁLCE SE TOČÍ... HODNĚ ŠTĚSTÍ!"
+            }
 
             scope.launch {
                 for (step in 1..5) {
@@ -322,62 +392,89 @@ fun App() {
             }
 
             scope.launch {
-                val activeHold = canHoldNow && heldReels.take(activeReelCount).any { it }
+                val activeHold = canHoldNow && !isFreeSpinTurn && heldReels.take(activeReelCount).any { it }
                 for (i in 0 until activeReelCount) {
                     spinningReels[i] = !(activeHold && heldReels[i])
                 }
 
                 for (i in 0 until activeReelCount) {
                     if (spinningReels[i]) {
-                        delay(if (i == 0) 430L else 330L)
+                        delay(if (i == 0) 410L else 290L)
                         reels[i] = SlotMachineRules.generateReelColumn()
                         spinningReels[i] = false
                         PlatformServices.playSound(BanditaSound.REEL_STOP)
                     } else {
-                        delay(100L)
+                        delay(90L)
                     }
                 }
 
                 val currentGrid = reels.take(activeReelCount)
-                val results = if (machineMode == MachineMode.CLASSIC_3V) {
-                    SlotMachineRules.evaluateGrid3Reels(currentGrid, currentBet)
-                } else {
-                    SlotMachineRules.evaluateGrid4Reels(currentGrid, currentBet)
-                }
+                val evalSummary = SlotMachineRules.evaluateSpin(
+                    mode = machineMode,
+                    reels = currentGrid,
+                    bet = currentBet,
+                    freeSpinMultiplier = if (isFreeSpinTurn) 3 else 1
+                )
 
-                winningLines = results
-                val totalWin = results.sumOf { it.winAmount }
+                winningLines = evalSummary.winningLines
+                val totalWin = evalSummary.totalWin
+
+                if (evalSummary.awardedFreeSpins > 0) {
+                    freeSpinsRemaining += evalSummary.awardedFreeSpins
+                    PlatformServices.playSound(BanditaSound.JACKPOT_777)
+                }
 
                 if (totalWin > 0) {
                     pendingWin = totalWin
                     riskStepCount = 0
-                    canHoldNow = false
-                    for (i in 0..3) heldReels[i] = false
-                    usedHoldThisTurn = false
+                    clearHoldState()
 
-                    val hasJackpot = results.any {
+                    val hasJackpot = evalSummary.winningLines.any {
                         it.symbol == SlotSymbol.JOKER || it.symbol == SlotSymbol.SEVEN
-                    }
+                    } || evalSummary.mysteryBonusWin > 0
+
                     when {
                         hasJackpot -> PlatformServices.playSound(BanditaSound.JACKPOT_777)
                         totalWin >= currentBet * 12 -> PlatformServices.playSound(BanditaSound.WIN_BIG)
                         else -> PlatformServices.playSound(BanditaSound.WIN_SMALL)
                     }
 
-                    val winNames = results.joinToString(" + ") { "${it.symbol.titleCz} (${it.winAmount})" }
-                    statusBanner = "VÝHRA $totalWin! ($winNames)"
+                    statusBanner = when {
+                        evalSummary.awardedFreeSpins > 0 ->
+                            "★ BONUS +${evalSummary.awardedFreeSpins} FREE SPINŮ + VÝHRA $totalWin! ★"
+                        evalSummary.mysteryBonusWin > 0 ->
+                            "★ 3× JOKER MYSTERY (+${evalSummary.mysteryBonusWin}) ★ CELKEM VÝHRA $totalWin!"
+                        else -> {
+                            val winNames = evalSummary.winningLines.take(3).joinToString(" + ") {
+                                val extra = if (it.bonusNote.isNotBlank()) " ${it.bonusNote}" else ""
+                                "${it.symbol.titleCz}$extra (${it.winAmount})"
+                            }
+                            "VÝHRA $totalWin! ($winNames)"
+                        }
+                    }
+                } else if (evalSummary.awardedFreeSpins > 0) {
+                    clearHoldState()
+                    statusBanner = "★ 3× ZVONEK! VYHRÁVÁŠ +${evalSummary.awardedFreeSpins} FREE SPINŮ (VÝHRY ×3)! ★"
                 } else {
-                    if (!activeHold && !usedHoldThisTurn && Random.nextFloat() < 0.65f) {
+                    // Pokud nepadla vyhra, v rezimu bez Free Spinu nabidneme chytry HOLD
+                    val suggested = SlotMachineRules.suggestHoldReels(currentGrid, machineMode)
+                    val hasGoodHoldSuggestion = suggested.any { it }
+                    if (!isFreeSpinTurn && !activeHold && !usedHoldThisTurn && hasGoodHoldSuggestion && Random.nextFloat() < 0.75f) {
                         canHoldNow = true
-                        val suggested = SlotMachineRules.suggestHoldReels(currentGrid, activeReelCount)
-                        for (i in 0 until activeReelCount) heldReels[i] = suggested[i]
                         usedHoldThisTurn = true
-                        statusBanner = "PODRŽ VÁLCE (HOLD 1–$activeReelCount) PRO DALŠÍ TAH!"
+                        for (i in 0 until activeReelCount) {
+                            suggestedHoldReels[i] = suggested[i]
+                            // Automaticky zamkneme pouze tehdy, kdyz na valci padl primo JOKER
+                            heldReels[i] = suggested[i] && currentGrid[i].any { it == SlotSymbol.JOKER }
+                        }
+                        statusBanner = "TIP NA HOLD! KLEPNI NA VÁLCE NEBO TLAČÍTKA HOLD 1–$activeReelCount."
                     } else {
-                        canHoldNow = false
-                        for (i in 0..3) heldReels[i] = false
-                        usedHoldThisTurn = false
-                        statusBanner = "ZKUS ŠTĚSTÍ ZNOVU! STISKNI START."
+                        clearHoldState()
+                        statusBanner = if (freeSpinsRemaining > 0) {
+                            "FREE SPIN DOKONČEN – ZBÝVÁ $freeSpinsRemaining VOLNÝCH ZATOČENÍ!"
+                        } else {
+                            "ZKUS ŠTĚSTÍ ZNOVU! STISKNI START NEBO ZATÁHNI ZA PÁKU."
+                        }
                     }
                 }
             }
@@ -393,7 +490,7 @@ fun App() {
             }
         }
 
-        val currentHighScore = if (machineMode == MachineMode.CLASSIC_3V) highScore3V else highScore4V
+        val currentHighScore = getHighScoreForMode(machineMode)
 
         Surface(
             modifier = Modifier.fillMaxSize(),
@@ -413,27 +510,29 @@ fun App() {
             ) {
                 when (currentScreen) {
                     BanditaScreen.CABINET -> {
-                        // 1) Horni svitici rampa s prepinacem automatu KLASIK 3V / SUPER 4V
+                        // 1) Horni svitici rampa s prepinacem 4 hernich automatu
                         TopCabinetHeader(
                             blinkPhase = blinkPhase,
                             machineMode = machineMode,
                             onSelectMode = { newMode ->
                                 if (!anySpinning && machineMode != newMode) {
-                                    // Pri prepnuti automatu pripadny Supermetr vyplatime do kreditu
-                                    if (supermeter > 0) {
-                                        credits += supermeter
+                                    // Pri prepnuti automatu bezpecne ulozime nevybranou vyhru i Supermetr do kreditu
+                                    val rescued = pendingWin + supermeter
+                                    if (rescued > 0) {
+                                        pendingWin = 0
                                         supermeter = 0
-                                        PlatformServices.saveCredits(credits)
+                                        riskStepCount = 0
+                                        syncCreditsAndRecord(credits + rescued)
                                     }
                                     machineMode = newMode
-                                    canHoldNow = false
-                                    for (i in 0..3) heldReels[i] = false
+                                    clearHoldState()
                                     winningLines = emptyList()
                                     PlatformServices.playSound(BanditaSound.BUTTON_CLICK)
-                                    statusBanner = if (newMode == MachineMode.CLASSIC_3V) {
-                                        "REŽIM KLASIK: 3 VÁLCE + HOLD + RISK 2×"
-                                    } else {
-                                        "REŽIM SUPER: 4 VÁLCE + HORNÍ DRUHÉ KOLO!"
+                                    statusBanner = when (newMode) {
+                                        MachineMode.CLASSIC_3V -> "KLASIK 3V: 5 LINIÍ + HOLD + RISK 2×"
+                                        MachineMode.SUPER_4V -> "SUPER 4V: 4 VÁLCE + SUPERMETR A DRUHÉ KOLO!"
+                                        MachineMode.CRISSCROSS_27 -> "JOKER 27: 27 KŘÍŽOVÝCH CEST + JOKER NÁSOBIČ 2×/4×!"
+                                        MachineMode.VEGAS_5V -> "VEGAS 5V: 5 VÁLCŮ, 9 LINIÍ + 3× ZVONEK = FREE SPINY!"
                                     }
                                 }
                             },
@@ -452,48 +551,75 @@ fun App() {
                         Spacer(modifier = Modifier.height(4.dp))
 
                         // 2) Digitalni 7-segmentova LED palubka
+                        val fourthLabel = when (machineMode) {
+                            MachineMode.SUPER_4V -> "SUPERMETR"
+                            MachineMode.VEGAS_5V -> if (freeSpinsRemaining > 0) "FREE SPINY" else "REKORD"
+                            else -> "REKORD"
+                        }
+                        val fourthValue = when (machineMode) {
+                            MachineMode.SUPER_4V -> supermeter
+                            MachineMode.VEGAS_5V -> if (freeSpinsRemaining > 0) freeSpinsRemaining else currentHighScore
+                            else -> currentHighScore
+                        }
+
                         DigitalLedDashboard(
                             credits = credits,
                             currentBet = currentBet,
                             pendingWin = pendingWin,
-                            fourthLabel = if (machineMode == MachineMode.SUPER_4V) "SUPERMETR" else "REKORD",
-                            fourthValue = if (machineMode == MachineMode.SUPER_4V) supermeter else currentHighScore
+                            fourthLabel = fourthLabel,
+                            fourthValue = fourthValue
                         )
 
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        // 3) V rezimu SUPER 4V zobrazime HORNÍ DRUHÉ KOLO (Světelné kolo štěstí + Supermetr)
-                        if (machineMode == MachineMode.SUPER_4V) {
-                            UpperBonusWheelSection(
-                                currentBet = currentBet,
-                                supermeter = supermeter,
-                                activeSliceIndex = activeWheelIndex,
-                                isWheelSpinning = isWheelSpinning,
-                                blinkPhase = blinkPhase,
-                                onSpinWheel = { spinUpperBonusWheel() },
-                                onCashOutSupermeter = { cashOutSupermeter() }
-                            )
-                        } else {
-                            MiniPaytableStrip(currentBet = currentBet)
+                        // 3) Horni panel podle vybraneho automatu
+                        when (machineMode) {
+                            MachineMode.SUPER_4V -> {
+                                UpperBonusWheelSection(
+                                    currentBet = currentBet,
+                                    supermeter = supermeter,
+                                    activeSliceIndex = activeWheelIndex,
+                                    isWheelSpinning = isWheelSpinning,
+                                    blinkPhase = blinkPhase,
+                                    onSpinWheel = { spinUpperBonusWheel() },
+                                    onCashOutSupermeter = { cashOutSupermeter() }
+                                )
+                            }
+                            MachineMode.CRISSCROSS_27 -> {
+                                CrissCrossInfoBanner(currentBet = currentBet, blinkPhase = blinkPhase)
+                            }
+                            MachineMode.VEGAS_5V -> {
+                                VegasFreeSpinsBanner(
+                                    currentBet = currentBet,
+                                    freeSpinsRemaining = freeSpinsRemaining,
+                                    blinkPhase = blinkPhase
+                                )
+                            }
+                            MachineMode.CLASSIC_3V -> {
+                                MiniPaytableStrip(currentBet = currentBet)
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        // 4) Hlavni okno 3 nebo 4 valcu s pakou
+                        // 4) Hlavni okno 3, 4 nebo 5 valcu s pakou
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f)
                         ) {
                             SlotMachineReelsCanvas(
-                                reelCount = machineMode.reelCount,
+                                machineMode = machineMode,
                                 reels = reels.toList(),
                                 spinningReels = spinningReels.toList(),
                                 reelPhaseOffsets = reelPhaseOffsets.toList(),
                                 heldReels = heldReels.toList(),
+                                suggestedHoldReels = suggestedHoldReels.toList(),
+                                canHoldNow = canHoldNow,
                                 winningLines = winningLines,
                                 leverPullProgress = leverPullProgress,
                                 blinkPhase = blinkPhase,
+                                onReelTapped = { idx -> toggleReelHold(idx) },
                                 onLeverPulled = { startSpin() },
                                 modifier = Modifier.fillMaxSize()
                             )
@@ -512,7 +638,11 @@ fun App() {
                         ) {
                             Text(
                                 text = statusBanner,
-                                color = if (pendingWin > 0 && blinkPhase) Color(0xFFFFEA00) else Color(0xFFFFCC80),
+                                color = if ((pendingWin > 0 || freeSpinsRemaining > 0) && blinkPhase) {
+                                    Color(0xFFFFEA00)
+                                } else {
+                                    Color(0xFFFFCC80)
+                                },
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center,
@@ -523,48 +653,52 @@ fun App() {
 
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        // 6) Podsvicena tlacitka HOLD (3 nebo 4 podle poctu valcu)
+                        // 6) Podsvicena tlacitka HOLD (3, 4 nebo 5 podle poctu valcu)
                         val activeReelCount = machineMode.reelCount
-                        val maxHoldAllowed = activeReelCount - 1
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(end = 28.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             for (idx in 0 until activeReelCount) {
                                 val isHeld = heldReels[idx]
+                                val isSuggested = canHoldNow && suggestedHoldReels[idx]
                                 val bgColor = when {
                                     isHeld -> Color(0xFFFFAB00)
-                                    canHoldNow && blinkPhase -> Color(0xFF6D4C41)
+                                    isSuggested && blinkPhase -> Color(0xFF2E7D32)
+                                    canHoldNow -> Color(0xFF4E342E)
                                     else -> Color(0xFF2D1E3E)
                                 }
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(33.dp)
+                                        .height(32.dp)
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(bgColor)
                                         .border(
-                                            width = if (isHeld) 2.dp else 1.dp,
-                                            color = if (isHeld) Color(0xFFFFF59D) else Color(0xFF8D6E63),
+                                            width = if (isHeld || isSuggested) 2.dp else 1.dp,
+                                            color = when {
+                                                isHeld -> Color(0xFFFFF59D)
+                                                isSuggested -> Color(0xFF69F0AE)
+                                                else -> Color(0xFF8D6E63)
+                                            },
                                             shape = RoundedCornerShape(8.dp)
                                         )
                                         .clickable(enabled = canHoldNow && !anySpinning) {
-                                            val currentlyHeldCount = heldReels.take(activeReelCount).count { it }
-                                            if (!heldReels[idx] && currentlyHeldCount >= maxHoldAllowed) {
-                                                val firstHeld = heldReels.take(activeReelCount).indexOfFirst { it }
-                                                if (firstHeld >= 0) heldReels[firstHeld] = false
-                                            }
-                                            heldReels[idx] = !heldReels[idx]
-                                            PlatformServices.playSound(BanditaSound.HOLD_LOCK)
+                                            toggleReelHold(idx)
                                         },
                                     contentAlignment = Alignment.Center
                                 ) {
+                                    val btnLabel = when {
+                                        isHeld -> "DRŽÍ ${idx + 1}"
+                                        isSuggested -> "TIP ${idx + 1}"
+                                        else -> "HOLD ${idx + 1}"
+                                    }
                                     Text(
-                                        text = if (isHeld) "HOLD ${idx + 1} ●" else "HOLD ${idx + 1}",
-                                        color = if (isHeld) Color(0xFF1A092B) else Color(0xFFE0E0E0),
-                                        fontSize = 10.sp,
+                                        text = btnLabel,
+                                        color = if (isHeld) Color(0xFF1A092B) else Color.White,
+                                        fontSize = if (activeReelCount == 5) 9.sp else 10.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         maxLines = 1
                                     )
@@ -574,7 +708,7 @@ fun App() {
 
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        // 7) Panel RISK 2x (v rezimu SUPER 4V navic tlacitko ▲ SUPERMETR)
+                        // 7) Panel RISK 2x (v rezimu SUPER 4V navic tlacitko ▲ SUPER)
                         if (pendingWin > 0) {
                             RiskGambleControlRow(
                                 pendingWin = pendingWin,
@@ -589,6 +723,7 @@ fun App() {
                         }
 
                         // 8) Hlavni arkadovy pult (SÁZKA, DOPLNIT KREDIT, START)
+                        val betLockedByFreeSpins = (machineMode == MachineMode.VEGAS_5V && freeSpinsRemaining > 0)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -596,12 +731,12 @@ fun App() {
                         ) {
                             Button(
                                 onClick = {
-                                    if (!anySpinning) {
+                                    if (!anySpinning && !betLockedByFreeSpins) {
                                         betIndex = (betIndex + 1) % SlotMachineRules.BET_OPTIONS.size
                                         PlatformServices.playSound(BanditaSound.BUTTON_CLICK)
                                     }
                                 },
-                                enabled = !anySpinning,
+                                enabled = !anySpinning && !betLockedByFreeSpins,
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
                                 shape = RoundedCornerShape(10.dp),
                                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
@@ -614,7 +749,7 @@ fun App() {
                                     verticalArrangement = Arrangement.Center
                                 ) {
                                     Text(
-                                        text = "SÁZKA (BET)",
+                                        text = if (betLockedByFreeSpins) "SÁZKA (BONUS)" else "SÁZKA (BET)",
                                         fontSize = 9.sp,
                                         color = Color(0xFFBBDEFB),
                                         maxLines = 1
@@ -629,7 +764,7 @@ fun App() {
                                 }
                             }
 
-                            if (credits < 5 && pendingWin == 0 && supermeter == 0) {
+                            if (credits < 5 && pendingWin == 0 && supermeter == 0 && freeSpinsRemaining == 0) {
                                 Button(
                                     onClick = {
                                         PlatformServices.playSound(BanditaSound.WIN_SMALL)
@@ -654,11 +789,22 @@ fun App() {
                                 }
                             }
 
+                            val startButtonText = when {
+                                pendingWin > 0 -> "VZÍT & START"
+                                machineMode == MachineMode.VEGAS_5V && freeSpinsRemaining > 0 ->
+                                    "★ FREE SPIN ($freeSpinsRemaining) ★"
+                                else -> "★ START ★"
+                            }
+
                             Button(
                                 onClick = { startSpin() },
                                 enabled = !anySpinning,
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (pendingWin > 0) Color(0xFFFF8F00) else Color(0xFF2E7D32)
+                                    containerColor = when {
+                                        pendingWin > 0 -> Color(0xFFFF8F00)
+                                        machineMode == MachineMode.VEGAS_5V && freeSpinsRemaining > 0 -> Color(0xFFAA00FF)
+                                        else -> Color(0xFF2E7D32)
+                                    }
                                 ),
                                 shape = RoundedCornerShape(10.dp),
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
@@ -668,8 +814,8 @@ fun App() {
                                     .border(2.dp, Color(0xFFFFD700), RoundedCornerShape(10.dp))
                             ) {
                                 Text(
-                                    text = if (pendingWin > 0) "VZÍT & START" else "★ START ★",
-                                    fontSize = 15.sp,
+                                    text = startButtonText,
+                                    fontSize = 14.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color.White,
                                     maxLines = 1
@@ -690,7 +836,7 @@ fun App() {
                     }
 
                     BanditaScreen.LEADERBOARD -> {
-                        val selectedBest = if (leaderboardCategory == MachineMode.CLASSIC_3V) highScore3V else highScore4V
+                        val selectedBest = getHighScoreForMode(leaderboardCategory)
                         LeaderboardScreen(
                             selectedCategory = leaderboardCategory,
                             onSelectCategory = { cat ->
@@ -843,10 +989,10 @@ private fun TopCabinetHeader(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // Prepinac dvou hernich automatu
+        // Prepinac 4 hernich automatu
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             for (mode in MachineMode.entries) {
                 val selected = (mode == machineMode)
@@ -865,9 +1011,9 @@ private fun TopCabinetHeader(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = mode.titleCz,
+                        text = mode.shortTabCz,
                         color = if (selected) Color(0xFF1A062B) else Color(0xFFE1BEE7),
-                        fontSize = 10.sp,
+                        fontSize = 9.sp,
                         fontWeight = FontWeight.ExtraBold,
                         maxLines = 1
                     )
@@ -899,7 +1045,6 @@ private fun UpperBonusWheelSection(
             .padding(horizontal = 6.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        // 8 sviticich poli horniho kola stesti (2 radky po 4 polich)
         for (rowIdx in 0..1) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -910,16 +1055,16 @@ private fun UpperBonusWheelSection(
                     val slice = slices[idx]
                     val isLit = (idx == activeSliceIndex)
                     val baseColor = Color(slice.colorHex)
-                    val displayText = if (slice.isMystery) {
-                        "★MYSTERY★"
-                    } else {
-                        "${slice.baseMultiplier * currentBet}"
+                    val displayText = when {
+                        slice.isMystery -> "★MYSTERY★"
+                        slice.isJackpot -> "★${slice.baseMultiplier * currentBet}★"
+                        else -> "+${slice.baseMultiplier * currentBet}"
                     }
 
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(24.dp)
+                            .height(23.dp)
                             .clip(RoundedCornerShape(5.dp))
                             .background(
                                 if (isLit) baseColor else baseColor.copy(alpha = 0.22f)
@@ -943,7 +1088,6 @@ private fun UpperBonusWheelSection(
             }
         }
 
-        // Ovladaci lista horniho kola (TOČIT DRUHÉ KOLO + VYBRAT SUPERMETR)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -952,7 +1096,7 @@ private fun UpperBonusWheelSection(
             Box(
                 modifier = Modifier
                     .weight(1.35f)
-                    .height(28.dp)
+                    .height(27.dp)
                     .clip(RoundedCornerShape(6.dp))
                     .background(
                         when {
@@ -978,11 +1122,11 @@ private fun UpperBonusWheelSection(
                 Box(
                     modifier = Modifier
                         .weight(0.85f)
-                        .height(28.dp)
+                        .height(27.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xFF00897B))
-                        .border(1.dp, Color(0xFF80CBC4), RoundedCornerShape(6.dp))
-                        .clickable(enabled = !isWheelSpinning) { onCashOutSupermeter() },
+                    .background(Color(0xFF00897B))
+                    .border(1.dp, Color(0xFF80CBC4), RoundedCornerShape(6.dp))
+                    .clickable(enabled = !isWheelSpinning) { onCashOutSupermeter() },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -995,6 +1139,83 @@ private fun UpperBonusWheelSection(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CrissCrossInfoBanner(currentBet: Int, blinkPhase: Boolean) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF280B3A), RoundedCornerShape(7.dp))
+            .border(1.dp, Color(0xFFFF80AB), RoundedCornerShape(7.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "★ 27 KŘÍŽOVÝCH CEST (KAŽDÝ S KAŽDÝM) ★",
+            color = if (blinkPhase) Color(0xFFFFEA00) else Color(0xFFFF80AB),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.ExtraBold,
+            maxLines = 1
+        )
+        Text(
+            text = "1× JOKER = 2× VÝHRA  |  2× JOKER = 4× VÝHRA  |  3× JOKER KDEKOLIV = MYSTERY AŽ ${currentBet * 200}!",
+            color = Color.White,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun VegasFreeSpinsBanner(
+    currentBet: Int,
+    freeSpinsRemaining: Int,
+    blinkPhase: Boolean
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                if (freeSpinsRemaining > 0) Color(0xFF311B92) else Color(0xFF0D291E),
+                RoundedCornerShape(7.dp)
+            )
+            .border(
+                1.dp,
+                if (freeSpinsRemaining > 0) Color(0xFFFFEA00) else Color(0xFF00E676),
+                RoundedCornerShape(7.dp)
+            )
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        if (freeSpinsRemaining > 0) {
+            Text(
+                text = "★ AKTIVNÍ BONUS: ZBÝVÁ $freeSpinsRemaining FREE SPINŮ (VŠECHNY VÝHRY ×3)! ★",
+                color = if (blinkPhase) Color(0xFFFFEA00) else Color(0xFF69F0AE),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 1
+            )
+        } else {
+            Text(
+                text = "★ 5 VÁLCŮ / 9 LINIÍ — 3, 4 NEBO 5 SYMBOLŮ V ŘADĚ (5× 777 = ${currentBet * 600}) ★",
+                color = Color(0xFF69F0AE),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 1
+            )
+        }
+        Text(
+            text = "3× ZVONEK KDEKOLIV = 10 FREE SPINŮ   |   4× ZVONEK = 15   |   5× ZVONEK = 20 FREE SPINŮ!",
+            color = Color.White,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -1140,7 +1361,6 @@ private fun RiskGambleControlRow(
         horizontalArrangement = Arrangement.spacedBy(5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // RISK ČERVENÁ 2x
         Button(
             onClick = onPickRed,
             colors = ButtonDefaults.buttonColors(
@@ -1161,7 +1381,6 @@ private fun RiskGambleControlRow(
             )
         }
 
-        // RISK ČERNÁ 2x
         Button(
             onClick = onPickBlack,
             colors = ButtonDefaults.buttonColors(
@@ -1182,7 +1401,6 @@ private fun RiskGambleControlRow(
             )
         }
 
-        // Prevod do HORNÍ HRY (SUPERMETRU) v rezimu 4 valcu
         if (showSupermeterTransfer) {
             Button(
                 onClick = onTransferSuper,
@@ -1203,7 +1421,6 @@ private fun RiskGambleControlRow(
             }
         }
 
-        // VZÍT VÝHRU
         Button(
             onClick = onCollect,
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF8F00)),
@@ -1238,19 +1455,24 @@ private fun PaytableScreen(
             .padding(12.dp)
     ) {
         Text(
-            text = "VÝPLATNÍ TABULKA – ${machineMode.titleCz} (SÁZKA $currentBet)",
+            text = "VÝPLATY – ${machineMode.titleCz} (SÁZKA $currentBet)",
             color = Color(0xFFFFD700),
-            fontSize = 14.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.ExtraBold,
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = if (machineMode == MachineMode.CLASSIC_3V) {
-                "• 3 válce, 5 výherních linií (3 vodorovné + 2 úhlopříčky).\n• Symbol JOKER ★ nahrazuje jakýkoliv jiný symbol!\n• 2× TŘEŠNĚ zleva vyplácí 2× sázku (${currentBet * 2})."
-            } else {
-                "• 4 válce, 5 výherních linií. Vyhrávají 3 stejné zleva i zprava a 4 stejné vyplácí 2,5× více!\n• Výhru lze převést tlačítkem ▲ SUPER do Supermetru a točit HORNÍ DRUHÉ KOLO s ★MYSTERY★ bonusem!"
+            text = when (machineMode) {
+                MachineMode.CLASSIC_3V ->
+                    "• 3 válce, 5 výherních linií (3 vodorovné + 2 úhlopříčky).\n• Symbol JOKER ★ nahrazuje jakýkoliv jiný symbol!\n• 2× TŘEŠNĚ zleva vyplácí 2× sázku (${currentBet * 2})."
+                MachineMode.SUPER_4V ->
+                    "• 4 válce, 5 linií. Vyhrávají 3 stejné zleva i zprava a 4 stejné vyplácí 2,5× více!\n• Na každé linii se vždy vyplácí nejvyšší dosažená kombinace.\n• Tlačítkem ▲ SUPER převedeš výhru do Supermetru pro HORNÍ DRUHÉ KOLO!"
+                MachineMode.CRISSCROSS_27 ->
+                    "• 3 válce, 27 křížových cest (každý řádek 1., 2. a 3. válce).\n• 1× JOKER v kombinaci násobí výhru 2×, 2× JOKER násobí výhru 4×!\n• 3× JOKER kdekoliv na válcích spouští MYSTERY BONUS (20× až 200× sázka)!"
+                MachineMode.VEGAS_5V ->
+                    "• 5 válců, 9 výherních linií. Vyhrávají 3, 4 nebo 5 stejných symbolů zleva.\n• 3, 4 nebo 5 ZVONKŮ kdekoliv na obrazovce spouští 10, 15 nebo 20 FREE SPINŮ zdarma, ve kterých se každá výhra násobí 3×!"
             },
             color = Color(0xFFE0E0E0),
             fontSize = 11.sp
@@ -1267,6 +1489,9 @@ private fun PaytableScreen(
             itemsIndexed(reversedSyms) { _, sym ->
                 val win3 = sym.multiplier3x * currentBet
                 val win4 = (sym.multiplier3x * currentBet * 5) / 2
+                val win5 = sym.multiplier3x * currentBet * 6
+                val crissBase = maxOf(currentBet, (currentBet * sym.multiplier3x) / 2)
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1278,17 +1503,20 @@ private fun PaytableScreen(
                     Text(
                         text = sym.titleCz,
                         color = Color.White,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = if (machineMode == MachineMode.CLASSIC_3V) {
-                            "3× = $win3"
-                        } else {
-                            "3× = $win3   |   4× = $win4"
+                        text = when (machineMode) {
+                            MachineMode.CLASSIC_3V -> "3× = $win3"
+                            MachineMode.SUPER_4V -> "3× = $win3  |  4× = $win4"
+                            MachineMode.CRISSCROSS_27 ->
+                                if (sym == SlotSymbol.JOKER) "3× = $win3"
+                                else "3× = $crissBase (★=${crissBase * 2})"
+                            MachineMode.VEGAS_5V -> "3×=$win3 | 4×=$win4 | 5×=$win5"
                         },
                         color = Color(0xFFFFEA00),
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.ExtraBold
                     )
                 }
@@ -1358,10 +1586,10 @@ private fun LeaderboardScreen(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Prepinaci tlacitka kategorii (KLASIK 3V vs SUPER 4V)
+        // Prepinaci tlacitka pro vsechny 4 automaty
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             for (cat in MachineMode.entries) {
                 val active = (cat == selectedCategory)
@@ -1380,9 +1608,9 @@ private fun LeaderboardScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = cat.titleCz,
+                        text = cat.shortTabCz,
                         color = if (active) Color(0xFF1A062B) else Color.White,
-                        fontSize = 11.sp,
+                        fontSize = 9.sp,
                         fontWeight = FontWeight.ExtraBold,
                         maxLines = 1
                     )

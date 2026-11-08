@@ -23,22 +23,43 @@ import kotlin.math.sin
 
 @Composable
 fun SlotMachineReelsCanvas(
-    reelCount: Int,
+    machineMode: MachineMode,
     reels: List<List<SlotSymbol>>,
     spinningReels: List<Boolean>,
     reelPhaseOffsets: List<Float>,
     heldReels: List<Boolean>,
+    suggestedHoldReels: List<Boolean>,
+    canHoldNow: Boolean,
     winningLines: List<WinningLineResult>,
     leverPullProgress: Float,
     blinkPhase: Boolean,
+    onReelTapped: (Int) -> Unit,
     onLeverPulled: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val reelCount = machineMode.reelCount
+
     Canvas(
-        modifier = modifier.pointerInput(Unit) {
+        modifier = modifier.pointerInput(reelCount, canHoldNow) {
             detectTapGestures { tapOffset ->
-                if (tapOffset.x > size.width * 0.88f) {
+                val w = size.width
+                val h = size.height
+                val cabinetWidth = w * 0.90f
+                if (tapOffset.x > w * 0.88f) {
                     onLeverPulled()
+                } else if (canHoldNow) {
+                    val pad = min(cabinetWidth, h) * 0.032f
+                    val windowLeft = pad * 1.4f
+                    val windowWidth = cabinetWidth - pad * 2.8f
+                    val reelGap = windowWidth * 0.016f
+                    val reelWidth = (windowWidth - reelGap * (reelCount + 1)) / reelCount.toFloat()
+                    for (r in 0 until reelCount) {
+                        val rx = windowLeft + reelGap + r * (reelWidth + reelGap)
+                        if (tapOffset.x in rx..(rx + reelWidth)) {
+                            onReelTapped(r)
+                            break
+                        }
+                    }
                 }
             }
         }
@@ -46,7 +67,7 @@ fun SlotMachineReelsCanvas(
         val w = size.width
         val h = size.height
 
-        // Vyhradime 90 % sirky pro okno valcu a 10 % vpravo pro mechanickou paku
+        // 90 % sirky pro okno valcu, 10 % vpravo pro mechanickou paku
         val cabinetWidth = w * 0.90f
         val pad = min(cabinetWidth, h) * 0.032f
         val windowLeft = pad * 1.4f
@@ -55,10 +76,15 @@ fun SlotMachineReelsCanvas(
         val windowHeight = h - pad * 2f
 
         // 1) Kovovy a zlaty vnejsi ram okna valcu
+        val frameColors = when (machineMode) {
+            MachineMode.CLASSIC_3V -> listOf(Color(0xFFFFD54F), Color(0xFFB28900), Color(0xFFFFF176), Color(0xFF8D6E63))
+            MachineMode.SUPER_4V -> listOf(Color(0xFF80D8FF), Color(0xFF0277BD), Color(0xFFE1F5FE), Color(0xFF01579B))
+            MachineMode.CRISSCROSS_27 -> listOf(Color(0xFFFF80AB), Color(0xFFC51162), Color(0xFFFFD740), Color(0xFF880E4F))
+            MachineMode.VEGAS_5V -> listOf(Color(0xFF69F0AE), Color(0xFF00C853), Color(0xFFFFD700), Color(0xFF1B5E20))
+        }
+
         drawRoundRect(
-            brush = Brush.linearGradient(
-                colors = listOf(Color(0xFFFFD54F), Color(0xFFB28900), Color(0xFFFFF176), Color(0xFF8D6E63))
-            ),
+            brush = Brush.linearGradient(colors = frameColors),
             topLeft = Offset(windowLeft - 6f, windowTop - 6f),
             size = Size(windowWidth + 12f, windowHeight + 12f),
             cornerRadius = CornerRadius(18f, 18f)
@@ -71,12 +97,12 @@ fun SlotMachineReelsCanvas(
             cornerRadius = CornerRadius(14f, 14f)
         )
 
-        val reelGap = windowWidth * 0.018f
+        val reelGap = windowWidth * 0.016f
         val reelWidth = (windowWidth - reelGap * (reelCount + 1)) / reelCount.toFloat()
         val reelHeight = windowHeight - reelGap * 2f
         val cellHeight = reelHeight / 3f
 
-        // 2) Vykresleni 3 nebo 4 valcu podle zvoleneho automatu
+        // 2) Vykresleni 3, 4 nebo 5 valcu podle zvoleneho automatu
         for (reelIdx in 0 until reelCount) {
             val rx = windowLeft + reelGap + reelIdx * (reelWidth + reelGap)
             val ry = windowTop + reelGap
@@ -122,7 +148,7 @@ fun SlotMachineReelsCanvas(
                     }
                 } else {
                     val colSyms = reels.getOrElse(reelIdx) {
-                        listOf(SlotSymbol.SEVEN, SlotSymbol.SEVEN, SlotSymbol.SEVEN)
+                        listOf(SlotSymbol.SEVEN, SlotSymbol.BAR, SlotSymbol.CHERRY)
                     }
                     for (row in 0..2) {
                         val sym = colSyms.getOrElse(row) { SlotSymbol.CHERRY }
@@ -137,8 +163,8 @@ fun SlotMachineReelsCanvas(
                         if (isWinningCell) {
                             drawRoundRect(
                                 color = if (blinkPhase) Color(0x55FFD700) else Color(0x33FF5252),
-                                topLeft = Offset(rx + 4f, ry + row * cellHeight + 4f),
-                                size = Size(reelWidth - 8f, cellHeight - 8f),
+                                topLeft = Offset(rx + 3f, ry + row * cellHeight + 3f),
+                                size = Size(reelWidth - 6f, cellHeight - 6f),
                                 cornerRadius = CornerRadius(8f, 8f)
                             )
                         }
@@ -150,19 +176,18 @@ fun SlotMachineReelsCanvas(
                             isHighlighted = isWinningCell && blinkPhase
                         )
 
-                        // Jemna delici linka mezi policky na valci
                         if (row > 0) {
                             drawLine(
                                 color = Color(0x335D4037),
-                                start = Offset(rx + 6f, ry + row * cellHeight),
-                                end = Offset(rx + reelWidth - 6f, ry + row * cellHeight),
+                                start = Offset(rx + 5f, ry + row * cellHeight),
+                                end = Offset(rx + reelWidth - 5f, ry + row * cellHeight),
                                 strokeWidth = 1.5f
                             )
                         }
                     }
                 }
 
-                // 3D zakriveny stin valce nahore a dole (efekt plastoveho bubnu)
+                // 3D zakriveny stin valce nahore a dole
                 drawRect(
                     brush = Brush.verticalGradient(
                         colors = listOf(Color(0x99000000), Color.Transparent),
@@ -183,18 +208,26 @@ fun SlotMachineReelsCanvas(
                 )
             }
 
-            // Ramecek kolem valce (zvyrazneny oranzove/zlate pokud je aktivni HOLD)
+            // Ramecek kolem valce (zlate pro aktivni HOLD, blikajici zelene pro doporuceny TIP)
             val isHeld = heldReels.getOrElse(reelIdx) { false }
+            val isSuggested = canHoldNow && suggestedHoldReels.getOrElse(reelIdx) { false }
+            val borderColor = when {
+                isHeld -> Color(0xFFFFAB00)
+                isSuggested && blinkPhase -> Color(0xFF00E676)
+                else -> Color(0xFF4E342E)
+            }
+            val borderWidth = if (isHeld || (isSuggested && blinkPhase)) 4.5f else 2f
+
             drawRoundRect(
-                color = if (isHeld) Color(0xFFFFAB00) else Color(0xFF4E342E),
+                color = borderColor,
                 topLeft = Offset(rx, ry),
                 size = Size(reelWidth, reelHeight),
                 cornerRadius = CornerRadius(10f, 10f),
-                style = Stroke(width = if (isHeld) 4.5f else 2f)
+                style = Stroke(width = borderWidth)
             )
         }
 
-        // 3) Vodici linky 5 vyhernich linii na okrajich + zvyrazneni vyher
+        // 3) Vodici linky vyhernich linii a laserove paprsky vyher
         val rowCentersY = List(3) { r -> windowTop + reelGap + r * cellHeight + cellHeight * 0.5f }
         val reelCentersX = List(reelCount) { c -> windowLeft + reelGap + c * (reelWidth + reelGap) + reelWidth * 0.5f }
 
@@ -206,8 +239,8 @@ fun SlotMachineReelsCanvas(
             strokeWidth = 2f
         )
 
-        // Znaky linii 1..5 na levem okraji
-        val badgeRadius = min(pad * 0.65f, 13f)
+        // Znaky linii na levem okraji
+        val badgeRadius = min(pad * 0.65f, 12f)
         val lineBadgePositions = listOf(
             1 to Offset(windowLeft - badgeRadius * 0.5f, rowCentersY[1]),
             2 to Offset(windowLeft - badgeRadius * 0.5f, rowCentersY[0]),
@@ -217,8 +250,13 @@ fun SlotMachineReelsCanvas(
         )
         for ((lineNo, pos) in lineBadgePositions) {
             val isLineWon = winningLines.any { it.lineId == lineNo }
+            val badgeBaseColor = when (machineMode) {
+                MachineMode.CRISSCROSS_27 -> Color(0xFFAA00FF)
+                MachineMode.VEGAS_5V -> Color(0xFF00C853)
+                else -> Color(0xFFD50000)
+            }
             drawCircle(
-                color = if (isLineWon && blinkPhase) Color(0xFFFFEA00) else Color(0xFFD50000),
+                color = if (isLineWon && blinkPhase) Color(0xFFFFEA00) else badgeBaseColor,
                 radius = badgeRadius,
                 center = pos
             )
@@ -231,34 +269,42 @@ fun SlotMachineReelsCanvas(
         }
 
         // Zvyraznene laserove paprsky pro vyhodnocene vyherni linie
+        val linePalette = listOf(
+            Color(0xFFFF1744),
+            Color(0xFF00E676),
+            Color(0xFF00B0FF),
+            Color(0xFFFFEA00),
+            Color(0xFFE040FB),
+            Color(0xFFFF9100),
+            Color(0xFF18FFFF),
+            Color(0xFFFF4081),
+            Color(0xFF76FF03)
+        )
+
         for (win in winningLines) {
-            val lineColor = when (win.lineId) {
-                1 -> Color(0xFFFF1744)
-                2 -> Color(0xFF00E676)
-                3 -> Color(0xFF00B0FF)
-                4 -> Color(0xFFFFEA00)
-                else -> Color(0xFFE040FB)
-            }
+            val lineColor = linePalette[(win.lineId - 1).coerceAtLeast(0) % linePalette.size]
             val alpha = if (blinkPhase) 1f else 0.45f
             val cols = win.activeColumns.sorted()
             for (idx in 0 until cols.size - 1) {
                 val cStart = cols[idx]
                 val cEnd = cols[idx + 1]
                 if (cStart in reelCentersX.indices && cEnd in reelCentersX.indices) {
-                    val pStart = Offset(reelCentersX[cStart], rowCentersY[win.rowsPerReel[cStart]])
-                    val pEnd = Offset(reelCentersX[cEnd], rowCentersY[win.rowsPerReel[cEnd]])
+                    val rStart = win.rowsPerReel.getOrElse(cStart) { 1 }.coerceIn(0, 2)
+                    val rEnd = win.rowsPerReel.getOrElse(cEnd) { 1 }.coerceIn(0, 2)
+                    val pStart = Offset(reelCentersX[cStart], rowCentersY[rStart])
+                    val pEnd = Offset(reelCentersX[cEnd], rowCentersY[rEnd])
                     drawLine(
                         color = lineColor.copy(alpha = alpha * 0.45f),
                         start = pStart,
                         end = pEnd,
-                        strokeWidth = 14f,
+                        strokeWidth = 12f,
                         cap = StrokeCap.Round
                     )
                     drawLine(
                         color = lineColor.copy(alpha = alpha),
                         start = pStart,
                         end = pEnd,
-                        strokeWidth = 5.5f,
+                        strokeWidth = 5f,
                         cap = StrokeCap.Round
                     )
                 }
@@ -284,7 +330,6 @@ private fun DrawScope.drawBanditaLever(
     val pivotX = areaLeft + areaWidth * 0.35f
     val pivotY = areaHeight * 0.62f
 
-    // Kovovy kloub u tela automatu
     drawRoundRect(
         brush = Brush.verticalGradient(
             listOf(Color(0xFF9E9E9E), Color(0xFF424242), Color(0xFF212121))
@@ -294,13 +339,11 @@ private fun DrawScope.drawBanditaLever(
         cornerRadius = CornerRadius(8f, 8f)
     )
 
-    // Rameno paky (pri zatazeni se kulicka posune z horni uvrati dolu)
     val topY = areaHeight * 0.14f
     val bottomY = areaHeight * 0.84f
     val knobY = topY + (bottomY - topY) * pullProgress.coerceIn(0f, 1f)
     val knobX = areaLeft + areaWidth * 0.62f
 
-    // Ocelova tyc
     drawLine(
         color = Color(0xFFBDBDBD),
         start = Offset(pivotX, pivotY),
@@ -316,7 +359,6 @@ private fun DrawScope.drawBanditaLever(
         cap = StrokeCap.Round
     )
 
-    // Klasicka cervena kulova hlavice paky s leskem
     val radius = (areaWidth * 0.34f).coerceIn(11f, 22f)
     drawCircle(
         brush = Brush.radialGradient(

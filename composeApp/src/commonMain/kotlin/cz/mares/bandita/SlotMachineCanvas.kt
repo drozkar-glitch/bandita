@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.floor
 import kotlin.math.min
 import kotlin.math.sin
 
@@ -75,7 +76,7 @@ fun SlotMachineReelsCanvas(
         val windowWidth = cabinetWidth - pad * 2.8f
         val windowHeight = h - pad * 2f
 
-        // 1) Kovovy a zlaty vnejsi ram okna valcu
+        // 1) Kovovy a zlaty vnejsi ram okna valcu podle aktivniho automatu
         val frameColors = when (machineMode) {
             MachineMode.CLASSIC_3V -> listOf(Color(0xFFFFD54F), Color(0xFFB28900), Color(0xFFFFF176), Color(0xFF8D6E63))
             MachineMode.SUPER_4V -> listOf(Color(0xFF80D8FF), Color(0xFF0277BD), Color(0xFFE1F5FE), Color(0xFF01579B))
@@ -102,7 +103,7 @@ fun SlotMachineReelsCanvas(
         val reelHeight = windowHeight - reelGap * 2f
         val cellHeight = reelHeight / 3f
 
-        // 2) Vykresleni 3, 4 nebo 5 valcu podle zvoleneho automatu
+        // 2) Vykresleni 3, 4 nebo 5 valcu
         for (reelIdx in 0 until reelCount) {
             val rx = windowLeft + reelGap + reelIdx * (reelWidth + reelGap)
             val ry = windowTop + reelGap
@@ -131,12 +132,12 @@ fun SlotMachineReelsCanvas(
                 val phase = reelPhaseOffsets.getOrElse(reelIdx) { 0f }
 
                 if (isSpinning) {
-                    val shiftY = (phase % 1f) * cellHeight
-                    val allSyms = SlotSymbol.entries
-                    val baseIndex = (phase.toInt() + reelIdx * 3) % allSyms.size
+                    // Posun po skutecnem mechanickem pasu valce
+                    val baseIndex = floor(phase).toInt()
+                    val fraction = phase - baseIndex.toFloat()
+                    val shiftY = fraction * cellHeight
                     for (row in -1..3) {
-                        val symIdx = (baseIndex + row + allSyms.size) % allSyms.size
-                        val sym = allSyms[symIdx]
+                        val sym = SlotMachineRules.getSymbolOnStrip(reelIdx, baseIndex + row)
                         val cy = ry + row * cellHeight + shiftY + cellHeight * 0.5f
                         val cx = rx + reelWidth * 0.5f
                         drawSlotSymbol(

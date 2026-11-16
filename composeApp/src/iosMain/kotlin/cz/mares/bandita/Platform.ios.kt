@@ -18,13 +18,15 @@ actual object PlatformServices {
 
     private val defaults = NSUserDefaults.standardUserDefaults
 
-    actual fun getSavedCredits(): Int {
-        val obj = defaults.objectForKey(KEY_CREDITS)
-        return if (obj != null) defaults.integerForKey(KEY_CREDITS).toInt() else 200
+    actual fun getSavedCredits(gameId: String): Int {
+        val key = if (gameId == "bandita") KEY_CREDITS else "${KEY_CREDITS}_$gameId"
+        val obj = defaults.objectForKey(key)
+        return if (obj != null) defaults.integerForKey(key).toInt() else 200
     }
 
-    actual fun saveCredits(credits: Int) {
-        defaults.setInteger(credits.toLong(), forKey = KEY_CREDITS)
+    actual fun saveCredits(credits: Int, gameId: String) {
+        val key = if (gameId == "bandita") KEY_CREDITS else "${KEY_CREDITS}_$gameId"
+        defaults.setInteger(credits.toLong(), forKey = key)
     }
 
     actual fun getHighScore(gameId: String): Int {
@@ -56,18 +58,19 @@ actual object PlatformServices {
     }
 
     actual fun playSound(sound: BanditaSound) {
+        // Pouzivame ciste zvukova ID bez vibraci pri rychlem rytmu RISKU a toceni valcu
         val soundId: UInt = when (sound) {
             BanditaSound.BUTTON_CLICK -> 1104u
             BanditaSound.REEL_TICK -> 1103u
             BanditaSound.REEL_STOP -> 1105u
             BanditaSound.HOLD_LOCK -> 1057u
-            BanditaSound.WHEEL_TICK -> 1104u
+            BanditaSound.WHEEL_TICK -> 1103u
             BanditaSound.SUPER_TRANSFER -> 1025u
-            BanditaSound.RISK_BEAT_A -> 1052u
-            BanditaSound.RISK_BEAT_B -> 1054u
-            BanditaSound.RISK_WIN_1 -> 1025u
-            BanditaSound.RISK_WIN_2 -> 1026u
-            BanditaSound.RISK_WIN_3 -> 1027u
+            BanditaSound.RISK_BEAT_A -> 1104u
+            BanditaSound.RISK_BEAT_B -> 1103u
+            BanditaSound.RISK_WIN_1 -> 1057u
+            BanditaSound.RISK_WIN_2 -> 1025u
+            BanditaSound.RISK_WIN_3 -> 1026u
             BanditaSound.RISK_WIN_4 -> 1028u
             BanditaSound.RISK_WIN_5 -> 1028u
             BanditaSound.RISK_LOSE -> 1073u

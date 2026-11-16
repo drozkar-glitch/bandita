@@ -6,19 +6,20 @@ import kotlin.random.Random
  * Kolekce 4 hernich automatu z 90. let v jedne aplikaci:
  * 1) KLASIK 3V (3 valce, 5 linii, HOLD + RISK)
  * 2) SUPER 4V (4 valce, 5 linii zleva/zprava/4x + SUPERMETR a DRUHE KOLO)
- * 3) JOKER 27 (3 valce, 27 krizovych cest Criss-Cross, Joker 2x/4x nasobic + Mystery)
- * 4) VEGAS 5V (5 valcu, 9 linii, 3x/4x/5x v rade + 10 FREE SPINU s 3x nasobicem)
+ * 3) JOKER 27 (3 valce, 27 krizovych cest Criss-Cross, 2x PLATNO + 3x ZVONEK MYSTERY)
+ * 4) VEGAS 5V (5 valcu, 9 linii, 3x/4x/5x v rade + FREE SPINY s 2x nasobicem)
  */
 enum class MachineMode(
     val shortTabCz: String,
     val titleCz: String,
     val reelCount: Int,
+    val allowHold: Boolean,
     val firebaseGameId: String
 ) {
-    CLASSIC_3V("KLASIK 3V", "KLASIK 3 VÁLCE (5 LINIÍ)", 3, "bandita"),
-    SUPER_4V("SUPER 4V", "SUPER 4V + DRUHÉ KOLO", 4, "bandita_super"),
-    CRISSCROSS_27("JOKER 27", "JOKER 27 CRISS-CROSS", 3, "bandita_crisscross"),
-    VEGAS_5V("VEGAS 5V", "VEGAS 5V + FREE SPINY", 5, "bandita_vegas5")
+    CLASSIC_3V("KLASIK 3V", "KLASIK 3 VÁLCE (5 LINIÍ)", 3, true, "bandita"),
+    SUPER_4V("SUPER 4V", "SUPER 4V + DRUHÉ KOLO", 4, true, "bandita_super"),
+    CRISSCROSS_27("JOKER 27", "JOKER 27 CRISS-CROSS", 3, false, "bandita_crisscross"),
+    VEGAS_5V("VEGAS 5V", "VEGAS 5V + FREE SPINY", 5, false, "bandita_vegas5")
 }
 
 /**
@@ -26,19 +27,18 @@ enum class MachineMode(
  */
 enum class SlotSymbol(
     val titleCz: String,
-    val multiplier3x: Int,
-    val weight: Int
+    val isFruit: Boolean
 ) {
-    CHERRY("TŘEŠNĚ", 4, 22),
-    LEMON("CITRÓN", 4, 20),
-    ORANGE("POMERANČ", 6, 17),
-    PLUM("ŠVESTKA", 8, 14),
-    GRAPES("HROZNY", 12, 11),
-    MELON("MELOUN", 20, 8),
-    BELL("ZVONEK", 30, 6),
-    BAR("BAR", 50, 4),
-    SEVEN("SEDMIČKA 7", 100, 3),
-    JOKER("JOKER ★", 200, 2);
+    CHERRY("TŘEŠNĚ", true),
+    LEMON("CITRÓN", true),
+    ORANGE("POMERANČ", true),
+    PLUM("ŠVESTKA", true),
+    GRAPES("HROZNY", true),
+    MELON("MELOUN", true),
+    BELL("ZVONEK", false),
+    BAR("BAR", false),
+    SEVEN("SEDMIČKA 7", false),
+    JOKER("JOKER ★", false);
 }
 
 data class PaylineDefinition(
@@ -60,17 +60,22 @@ data class SpinEvaluationSummary(
     val winningLines: List<WinningLineResult>,
     val totalWin: Int,
     val awardedFreeSpins: Int = 0,
-    val mysteryBonusWin: Int = 0
+    val mysteryBonusWin: Int = 0,
+    val isFullFruitDouble: Boolean = false,
+    val highlightCells: List<Pair<Int, Int>> = emptyList()
 )
 
 /**
  * Segmenty horniho bonusoveho kola ("Druhe kolo" nad 4valcovym automatem)
+ * Vcetne prohernich poli STOP (0), aby kolo melo realnou matematiku (~98 % RTP).
  */
 data class BonusWheelSlice(
     val index: Int,
     val baseMultiplier: Int,
+    val weight: Int,
     val isMystery: Boolean = false,
     val isJackpot: Boolean = false,
+    val isLose: Boolean = false,
     val colorHex: Long
 )
 
@@ -128,69 +133,267 @@ object SlotMachineRules {
         list
     }
 
-    // 8 sviticich poli na hornim kole stesti (nasobky aktualni sazky)
+    // 8 sviticich poli na hornim kole stesti (s poctivymi vahami pro cenu kola 2x sazka)
     val BONUS_WHEEL_SLICES = listOf(
-        BonusWheelSlice(0, 2, isMystery = false, isJackpot = false, colorHex = 0xFF00C853),
-        BonusWheelSlice(1, 4, isMystery = false, isJackpot = false, colorHex = 0xFF00B0FF),
-        BonusWheelSlice(2, 10, isMystery = true, isJackpot = false, colorHex = 0xFFAA00FF),
-        BonusWheelSlice(3, 3, isMystery = false, isJackpot = false, colorHex = 0xFFFF9100),
-        BonusWheelSlice(4, 10, isMystery = false, isJackpot = false, colorHex = 0xFFFF1744),
-        BonusWheelSlice(5, 2, isMystery = false, isJackpot = false, colorHex = 0xFF00C853),
-        BonusWheelSlice(6, 6, isMystery = false, isJackpot = false, colorHex = 0xFF00E5FF),
-        BonusWheelSlice(7, 25, isMystery = false, isJackpot = true, colorHex = 0xFFFFD600)
+        BonusWheelSlice(0, baseMultiplier = 0, weight = 26, isLose = true, colorHex = 0xFF455A64),
+        BonusWheelSlice(1, baseMultiplier = 2, weight = 22, colorHex = 0xFF00C853),
+        BonusWheelSlice(2, baseMultiplier = 10, weight = 6, isMystery = true, colorHex = 0xFFAA00FF),
+        BonusWheelSlice(3, baseMultiplier = 0, weight = 24, isLose = true, colorHex = 0xFF455A64),
+        BonusWheelSlice(4, baseMultiplier = 6, weight = 8, colorHex = 0xFF00B0FF),
+        BonusWheelSlice(5, baseMultiplier = 3, weight = 14, colorHex = 0xFFFF9100),
+        BonusWheelSlice(6, baseMultiplier = 0, weight = 20, isLose = true, colorHex = 0xFF455A64),
+        BonusWheelSlice(7, baseMultiplier = 25, weight = 2, isJackpot = true, colorHex = 0xFFFFD600)
     )
+
+    fun pickWeightedWheelSliceIndex(): Int {
+        val totalWeight = BONUS_WHEEL_SLICES.sumOf { it.weight }
+        var roll = Random.nextInt(totalWeight)
+        for (slice in BONUS_WHEEL_SLICES) {
+            roll -= slice.weight
+            if (roll < 0) return slice.index
+        }
+        return 0
+    }
+
+    fun rollMysteryWheelMultiplier(): Int {
+        val options = listOf(4, 6, 8, 12, 16, 25)
+        return options[Random.nextInt(options.size)]
+    }
 
     /**
-     * Pevne mechanicke pasy pro 5 valcu (kazdy pas ma 30 symbolu poskladanych tak,
-     * aby zadne 3 sousedni symboly na valci nebyly stejne - pri zastaveni valce
-     * jsou tedy v okne vzdy 3 ruzne symboly a animace presne odpovida vysledku).
+     * Sestavi deterministicky, ale pro kazdy valec zcela unikatni pas symbolu,
+     * kde zadne dva stejne symboly nelezi ve vzdalenosti <= 2 (ani pres konec pasu dokola).
      */
-    private val BASE_STRIP = listOf(
-        SlotSymbol.CHERRY, SlotSymbol.LEMON, SlotSymbol.ORANGE,
-        SlotSymbol.PLUM, SlotSymbol.CHERRY, SlotSymbol.GRAPES,
-        SlotSymbol.LEMON, SlotSymbol.MELON, SlotSymbol.ORANGE,
-        SlotSymbol.CHERRY, SlotSymbol.BELL, SlotSymbol.PLUM,
-        SlotSymbol.LEMON, SlotSymbol.BAR, SlotSymbol.ORANGE,
-        SlotSymbol.GRAPES, SlotSymbol.CHERRY, SlotSymbol.SEVEN,
-        SlotSymbol.LEMON, SlotSymbol.PLUM, SlotSymbol.MELON,
-        SlotSymbol.ORANGE, SlotSymbol.CHERRY, SlotSymbol.BELL,
-        SlotSymbol.GRAPES, SlotSymbol.LEMON, SlotSymbol.JOKER,
-        SlotSymbol.PLUM, SlotSymbol.ORANGE, SlotSymbol.MELON
+    private fun buildDistinctReelStrip(counts: List<Pair<SlotSymbol, Int>>, seed: Int): List<SlotSymbol> {
+        val totalLen = counts.sumOf { it.second }
+
+        for (attempt in 0 until 80) {
+            val rng = Random(seed + attempt * 97)
+            val remaining = LinkedHashMap<SlotSymbol, Int>()
+            for ((sym, cnt) in counts) remaining[sym] = cnt
+
+            val result = ArrayList<SlotSymbol>(totalLen)
+            var success = true
+
+            for (pos in 0 until totalLen) {
+                val forbidden = HashSet<SlotSymbol>()
+                if (pos >= 1) forbidden.add(result[pos - 1])
+                if (pos >= 2) forbidden.add(result[pos - 2])
+                if (pos == totalLen - 2 && result.isNotEmpty()) {
+                    forbidden.add(result[0])
+                }
+                if (pos == totalLen - 1 && result.size >= 2) {
+                    forbidden.add(result[0])
+                    forbidden.add(result[1])
+                }
+
+                val candidates = remaining.entries.filter { it.value > 0 && it.key !in forbidden }
+                if (candidates.isEmpty()) {
+                    success = false
+                    break
+                }
+
+                // Uprednostnime symboly s nejvyssim zbyvajicim poctem + nahodny vyber, aby se nezablokoval konec
+                val maxRem = candidates.maxOf { it.value }
+                val pool = if (maxRem * 3 >= (totalLen - pos) + 1) {
+                    candidates.filter { it.value == maxRem }
+                } else {
+                    candidates
+                }
+
+                val weightSum = pool.sumOf { it.value }
+                var pickRoll = rng.nextInt(weightSum)
+                var chosen = pool.first().key
+                for (entry in pool) {
+                    pickRoll -= entry.value
+                    if (pickRoll < 0) {
+                        chosen = entry.key
+                        break
+                    }
+                }
+
+                result.add(chosen)
+                remaining[chosen] = (remaining[chosen] ?: 1) - 1
+            }
+
+            if (success && result.size == totalLen) {
+                return result
+            }
+        }
+
+        // Zaruceny fallback rozlozeni po 3 drahach (kdyby nahodny pokus nevyšel)
+        val flat = ArrayList<SlotSymbol>(totalLen)
+        for ((sym, cnt) in counts.sortedByDescending { it.second }) {
+            repeat(cnt) { flat.add(sym) }
+        }
+        val fallback = Array(totalLen) { SlotSymbol.CHERRY }
+        var idx = 0
+        for (lane in 0..2) {
+            var p = lane
+            while (p < totalLen) {
+                fallback[p] = flat[idx++]
+                p += 3
+            }
+        }
+        return fallback.toList()
+    }
+
+    // 40-polozkove unikatni pasy pro 5-liniove a 9-liniove automaty (KLASIK 3V, SUPER 4V, VEGAS 5V)
+    private val COUNTS_LINE_MACHINES = listOf(
+        SlotSymbol.CHERRY to 7,
+        SlotSymbol.LEMON to 7,
+        SlotSymbol.ORANGE to 7,
+        SlotSymbol.PLUM to 6,
+        SlotSymbol.GRAPES to 4,
+        SlotSymbol.MELON to 3,
+        SlotSymbol.BELL to 2,
+        SlotSymbol.BAR to 2,
+        SlotSymbol.SEVEN to 1,
+        SlotSymbol.JOKER to 1
     )
 
-    val REEL_STRIPS: List<List<SlotSymbol>> = listOf(
-        BASE_STRIP,
-        BASE_STRIP.drop(7) + BASE_STRIP.take(7),
-        BASE_STRIP.drop(13) + BASE_STRIP.take(13),
-        BASE_STRIP.drop(19) + BASE_STRIP.take(19),
-        BASE_STRIP.drop(23) + BASE_STRIP.take(23)
+    // 45-polozkove vyvazene pasy pro 27-cestny automat JOKER 27 CRISS-CROSS
+    private val COUNTS_JOKER27 = listOf(
+        SlotSymbol.CHERRY to 6,
+        SlotSymbol.LEMON to 6,
+        SlotSymbol.ORANGE to 6,
+        SlotSymbol.PLUM to 6,
+        SlotSymbol.GRAPES to 5,
+        SlotSymbol.MELON to 5,
+        SlotSymbol.BELL to 4,
+        SlotSymbol.BAR to 4,
+        SlotSymbol.SEVEN to 2,
+        SlotSymbol.JOKER to 1
     )
 
-    val STRIP_LENGTH: Int = BASE_STRIP.size
+    private val STRIPS_LINE_MACHINES: List<List<SlotSymbol>> by lazy {
+        List(5) { reelIdx -> buildDistinctReelStrip(COUNTS_LINE_MACHINES, seed = 1993 + reelIdx * 503) }
+    }
 
-    fun getSymbolOnStrip(reelIndex: Int, position: Int): SlotSymbol {
-        val strip = REEL_STRIPS.getOrElse(reelIndex) { BASE_STRIP }
+    private val STRIPS_JOKER27: List<List<SlotSymbol>> by lazy {
+        List(3) { reelIdx -> buildDistinctReelStrip(COUNTS_JOKER27, seed = 2026 + reelIdx * 733) }
+    }
+
+    private fun stripsForMode(mode: MachineMode): List<List<SlotSymbol>> {
+        return if (mode == MachineMode.CRISSCROSS_27) STRIPS_JOKER27 else STRIPS_LINE_MACHINES
+    }
+
+    fun getStripLength(mode: MachineMode): Int {
+        return stripsForMode(mode).first().size
+    }
+
+    fun getSymbolOnStrip(mode: MachineMode, reelIndex: Int, position: Int): SlotSymbol {
+        val strips = stripsForMode(mode)
+        val strip = strips.getOrElse(reelIndex) { strips.first() }
         val safeIdx = ((position % strip.size) + strip.size) % strip.size
         return strip[safeIdx]
     }
 
-    /**
-     * Vrati 3 viditelne symboly (horni, stredni, dolni) pro dany valec a index zastaveni na pasu.
-     */
-    fun getVisibleReelSymbols(reelIndex: Int, stopPosition: Int): List<SlotSymbol> {
+    fun getVisibleReelSymbols(mode: MachineMode, reelIndex: Int, stopPosition: Int): List<SlotSymbol> {
         return listOf(
-            getSymbolOnStrip(reelIndex, stopPosition),
-            getSymbolOnStrip(reelIndex, stopPosition + 1),
-            getSymbolOnStrip(reelIndex, stopPosition + 2)
+            getSymbolOnStrip(mode, reelIndex, stopPosition),
+            getSymbolOnStrip(mode, reelIndex, stopPosition + 1),
+            getSymbolOnStrip(mode, reelIndex, stopPosition + 2)
         )
     }
 
-    fun randomStopPosition(): Int {
-        return Random.nextInt(STRIP_LENGTH)
+    fun randomStopPosition(mode: MachineMode): Int {
+        return Random.nextInt(getStripLength(mode))
     }
 
-    fun generateReelColumn(reelIndex: Int = Random.nextInt(5)): List<SlotSymbol> {
-        return getVisibleReelSymbols(reelIndex, randomStopPosition())
+    // --- VYPLATNI TABULKY JEDNOTLIVYCH AUTOMATU ---
+
+    fun getClassic3VMultiplier(symbol: SlotSymbol): Int = when (symbol) {
+        SlotSymbol.CHERRY -> 2
+        SlotSymbol.LEMON -> 2
+        SlotSymbol.ORANGE -> 4
+        SlotSymbol.PLUM -> 6
+        SlotSymbol.GRAPES -> 10
+        SlotSymbol.MELON -> 16
+        SlotSymbol.BELL -> 24
+        SlotSymbol.BAR -> 40
+        SlotSymbol.SEVEN -> 100
+        SlotSymbol.JOKER -> 200
+    }
+
+    private fun getSuper4VMultiplier3x(symbol: SlotSymbol): Int = when (symbol) {
+        SlotSymbol.CHERRY -> 2
+        SlotSymbol.LEMON -> 2
+        SlotSymbol.ORANGE -> 3
+        SlotSymbol.PLUM -> 4
+        SlotSymbol.GRAPES -> 6
+        SlotSymbol.MELON -> 10
+        SlotSymbol.BELL -> 16
+        SlotSymbol.BAR -> 25
+        SlotSymbol.SEVEN -> 60
+        SlotSymbol.JOKER -> 120
+    }
+
+    private fun getSuper4VMultiplier4x(symbol: SlotSymbol): Int = when (symbol) {
+        SlotSymbol.CHERRY -> 6
+        SlotSymbol.LEMON -> 6
+        SlotSymbol.ORANGE -> 10
+        SlotSymbol.PLUM -> 14
+        SlotSymbol.GRAPES -> 20
+        SlotSymbol.MELON -> 35
+        SlotSymbol.BELL -> 50
+        SlotSymbol.BAR -> 80
+        SlotSymbol.SEVEN -> 200
+        SlotSymbol.JOKER -> 400
+    }
+
+    private fun getCrissCross27Multiplier(symbol: SlotSymbol): Int = when (symbol) {
+        SlotSymbol.CHERRY -> 1
+        SlotSymbol.LEMON -> 1
+        SlotSymbol.ORANGE -> 1
+        SlotSymbol.PLUM -> 1
+        SlotSymbol.GRAPES -> 2
+        SlotSymbol.MELON -> 2
+        SlotSymbol.BELL -> 4
+        SlotSymbol.BAR -> 6
+        SlotSymbol.SEVEN -> 16
+        SlotSymbol.JOKER -> 50
+    }
+
+    private fun getVegas5VMultiplier(symbol: SlotSymbol, matchLen: Int): Int {
+        val m3: Int
+        val m4: Int
+        val m5: Int
+        when (symbol) {
+            SlotSymbol.CHERRY -> { m3 = 1; m4 = 3; m5 = 10 }
+            SlotSymbol.LEMON -> { m3 = 1; m4 = 3; m5 = 10 }
+            SlotSymbol.ORANGE -> { m3 = 1; m4 = 4; m5 = 12 }
+            SlotSymbol.PLUM -> { m3 = 2; m4 = 5; m5 = 15 }
+            SlotSymbol.GRAPES -> { m3 = 3; m4 = 8; m5 = 25 }
+            SlotSymbol.MELON -> { m3 = 4; m4 = 12; m5 = 40 }
+            SlotSymbol.BELL -> { m3 = 5; m4 = 15; m5 = 50 }
+            SlotSymbol.BAR -> { m3 = 8; m4 = 25; m5 = 80 }
+            SlotSymbol.SEVEN -> { m3 = 15; m4 = 50; m5 = 150 }
+            SlotSymbol.JOKER -> { m3 = 30; m4 = 100; m5 = 300 }
+        }
+        return when (matchLen) {
+            3 -> m3
+            4 -> m4
+            else -> m5
+        }
+    }
+
+    fun getPaytableMultipliersText(mode: MachineMode, symbol: SlotSymbol, bet: Int): String {
+        return when (mode) {
+            MachineMode.CLASSIC_3V -> "3× = ${getClassic3VMultiplier(symbol) * bet}"
+            MachineMode.SUPER_4V ->
+                "3× = ${getSuper4VMultiplier3x(symbol) * bet}  |  4× = ${getSuper4VMultiplier4x(symbol) * bet}"
+            MachineMode.CRISSCROSS_27 -> {
+                val base = getCrissCross27Multiplier(symbol) * bet
+                if (symbol.isFruit) "3× = $base (Plátno = ${base * 2})" else "3× = $base"
+            }
+            MachineMode.VEGAS_5V -> {
+                val w3 = getVegas5VMultiplier(symbol, 3) * bet
+                val w4 = getVegas5VMultiplier(symbol, 4) * bet
+                val w5 = getVegas5VMultiplier(symbol, 5) * bet
+                "3×=$w3 | 4×=$w4 | 5×=$w5"
+            }
+        }
     }
 
     /**
@@ -229,7 +432,7 @@ object SlotMachineRules {
     /**
      * 1) Vyhodnoceni KLASIK 3V (3 valce, 5 linii)
      */
-    fun evaluateGrid3Reels(reels: List<List<SlotSymbol>>, bet: Int): List<WinningLineResult> {
+    private fun evaluateGrid3Reels(reels: List<List<SlotSymbol>>, bet: Int): List<WinningLineResult> {
         if (reels.size < 3) return emptyList()
         val results = mutableListOf<WinningLineResult>()
 
@@ -244,7 +447,7 @@ object SlotMachineRules {
                     WinningLineResult(
                         lineId = line.id,
                         symbol = SlotSymbol.JOKER,
-                        winAmount = bet * SlotSymbol.JOKER.multiplier3x,
+                        winAmount = bet * getClassic3VMultiplier(SlotSymbol.JOKER),
                         rowsPerReel = line.rowsPerReel,
                         activeColumns = listOf(0, 1, 2),
                         bonusNote = "3× JOKER"
@@ -260,7 +463,7 @@ object SlotMachineRules {
                     WinningLineResult(
                         lineId = line.id,
                         symbol = targetSymbol,
-                        winAmount = bet * targetSymbol.multiplier3x,
+                        winAmount = bet * getClassic3VMultiplier(targetSymbol),
                         rowsPerReel = line.rowsPerReel,
                         activeColumns = listOf(0, 1, 2)
                     )
@@ -268,13 +471,13 @@ object SlotMachineRules {
                 continue
             }
 
-            // Klasicky bonus 2x TRESNE zleva (pouze dve skutecne tresne na 1. a 2. valci)
+            // Bonus 2x TRESNE zleva (vraceni 1x sazky)
             if (s0 == SlotSymbol.CHERRY && s1 == SlotSymbol.CHERRY) {
                 results.add(
                     WinningLineResult(
                         lineId = line.id,
                         symbol = SlotSymbol.CHERRY,
-                        winAmount = bet * 2,
+                        winAmount = bet,
                         rowsPerReel = line.rowsPerReel,
                         activeColumns = listOf(0, 1),
                         bonusNote = "2× TŘEŠNĚ"
@@ -288,9 +491,9 @@ object SlotMachineRules {
 
     /**
      * 2) Vyhodnoceni SUPER 4V (4 valce, 5 linii).
-     * Na kazde linii vyhodnoti 4 v rade, 3 zleva a 3 zprava a vybere NEJVYSSI vyhru.
+     * Na kazde linii zkontroluje 4 v rade, 3 zleva a 3 zprava a vybere nejvyssi kombinaci.
      */
-    fun evaluateGrid4Reels(reels: List<List<SlotSymbol>>, bet: Int): List<WinningLineResult> {
+    private fun evaluateGrid4Reels(reels: List<List<SlotSymbol>>, bet: Int): List<WinningLineResult> {
         if (reels.size < 4) return emptyList()
         val results = mutableListOf<WinningLineResult>()
 
@@ -302,7 +505,7 @@ object SlotMachineRules {
 
             val candidates = mutableListOf<WinningLineResult>()
 
-            // A: Vsechny 4 valce (0, 1, 2, 3) -> 2.5x nasobek trojice
+            // A: 4 stejne v rade (0, 1, 2, 3)
             val quad = listOf(s0, s1, s2, s3)
             val nonJokers4 = quad.filter { it != SlotSymbol.JOKER }
             val sym4 = nonJokers4.firstOrNull() ?: SlotSymbol.JOKER
@@ -311,7 +514,7 @@ object SlotMachineRules {
                     WinningLineResult(
                         lineId = line.id,
                         symbol = sym4,
-                        winAmount = (bet * sym4.multiplier3x * 5) / 2,
+                        winAmount = bet * getSuper4VMultiplier4x(sym4),
                         rowsPerReel = line.rowsPerReel,
                         activeColumns = listOf(0, 1, 2, 3),
                         bonusNote = "4× V ŘADĚ"
@@ -319,7 +522,7 @@ object SlotMachineRules {
                 )
             }
 
-            // B: 3 valce ZLEVA (0, 1, 2)
+            // B: 3 stejne ZLEVA (0, 1, 2)
             val leftTrio = listOf(s0, s1, s2)
             val nonJokersLeft = leftTrio.filter { it != SlotSymbol.JOKER }
             val symLeft = nonJokersLeft.firstOrNull() ?: SlotSymbol.JOKER
@@ -328,7 +531,7 @@ object SlotMachineRules {
                     WinningLineResult(
                         lineId = line.id,
                         symbol = symLeft,
-                        winAmount = bet * symLeft.multiplier3x,
+                        winAmount = bet * getSuper4VMultiplier3x(symLeft),
                         rowsPerReel = line.rowsPerReel,
                         activeColumns = listOf(0, 1, 2),
                         bonusNote = "3× ZLEVA"
@@ -336,7 +539,7 @@ object SlotMachineRules {
                 )
             }
 
-            // C: 3 valce ZPRAVA (1, 2, 3)
+            // C: 3 stejne ZPRAVA (1, 2, 3)
             val rightTrio = listOf(s1, s2, s3)
             val nonJokersRight = rightTrio.filter { it != SlotSymbol.JOKER }
             val symRight = nonJokersRight.firstOrNull() ?: SlotSymbol.JOKER
@@ -345,7 +548,7 @@ object SlotMachineRules {
                     WinningLineResult(
                         lineId = line.id,
                         symbol = symRight,
-                        winAmount = bet * symRight.multiplier3x,
+                        winAmount = bet * getSuper4VMultiplier3x(symRight),
                         rowsPerReel = line.rowsPerReel,
                         activeColumns = listOf(1, 2, 3),
                         bonusNote = "3× ZPRAVA"
@@ -363,21 +566,28 @@ object SlotMachineRules {
     }
 
     /**
-     * 3) Vyhodnoceni JOKER 27 CRISS-CROSS (27 cest na 3 valcich).
-     * OPRAVENO:
-     * - Aby 2 Jokeri na dvou valcich nevyplatili vsechny 3 ruzne symboly na zbylemu valci najednou,
-     *   pri kombinaci se 2 Jokery vyhrava na tretim valci pouze symbol s NEJVYSSI hodnotou.
-     * - Kazdy JOKER v kombinaci nasobi vyhru 2x (1 Joker = 2x, 2 Jokeri = 4x).
+     * 3) Vyhodnoceni JOKER 27 CRISS-CROSS (27 cest na 3 valcich):
+     * - JOKER nahrazuje jakykoliv symbol na 27 cestach.
+     * - Pokud vsech 9 poli na obrazovce tvori OVOCE (nebo ovoce + JOKER), vsechny vyhry se nasobi 2x (PLATNO 2x)!
+     * - Pokud na kazdem ze 3 valcu padne ZVONEK (3x ZVONEK kdekoliv), spusti se navic MYSTERY VYHRA (8x az 50x sazka)!
      */
-    fun evaluateCrissCross27(reels: List<List<SlotSymbol>>, bet: Int): SpinEvaluationSummary {
+    private fun evaluateCrissCross27(reels: List<List<SlotSymbol>>, bet: Int): SpinEvaluationSummary {
         if (reels.size < 3) return SpinEvaluationSummary(emptyList(), 0)
-        val rawResults = mutableListOf<WinningLineResult>()
 
-        // Nejvyssi symbol na kazdem valci pro pripad 2x JOKER + 1 symbol
-        val highestNonJokerPerReel = List(3) { r ->
-            reels[r].filter { it != SlotSymbol.JOKER }.maxByOrNull { it.multiplier3x }
+        val allNineAreFruitOrJoker = (0..2).all { c ->
+            (0..2).all { r ->
+                val s = reels[c][r]
+                s.isFruit || s == SlotSymbol.JOKER
+            }
+        }
+        val platnoMultiplier = if (allNineAreFruitOrJoker) 2 else 1
+
+        // Nejvyssi ne-Joker symbol na kazdem valci pro pripad 2x JOKER na lince
+        val highestPerReel = List(3) { c ->
+            reels[c].filter { it != SlotSymbol.JOKER }.maxByOrNull { getCrissCross27Multiplier(it) }
         }
 
+        val results = mutableListOf<WinningLineResult>()
         for (line in PAYLINES_CRISSCROSS_27) {
             val s0 = reels[0][line.rowsPerReel[0]]
             val s1 = reels[1][line.rowsPerReel[1]]
@@ -386,11 +596,11 @@ object SlotMachineRules {
             val jokerCount = trio.count { it == SlotSymbol.JOKER }
 
             if (jokerCount == 3) {
-                rawResults.add(
+                results.add(
                     WinningLineResult(
                         lineId = line.id,
                         symbol = SlotSymbol.JOKER,
-                        winAmount = bet * SlotSymbol.JOKER.multiplier3x,
+                        winAmount = bet * getCrissCross27Multiplier(SlotSymbol.JOKER),
                         rowsPerReel = line.rowsPerReel,
                         activeColumns = listOf(0, 1, 2),
                         bonusNote = "3× JOKER"
@@ -402,58 +612,60 @@ object SlotMachineRules {
             val nonJokers = trio.filter { it != SlotSymbol.JOKER }
             val targetSymbol = nonJokers.first()
             if (nonJokers.all { it == targetSymbol }) {
-                // Pokud jsou v ceste 2 Jokeri a jen 1 bezny symbol, zapocitame pouze nejvyssi symbol daneho valce
                 if (jokerCount == 2) {
-                    val nonJokerReelIdx = trio.indexOfFirst { it != SlotSymbol.JOKER }
-                    if (targetSymbol != highestNonJokerPerReel[nonJokerReelIdx]) {
-                        continue
-                    }
+                    val onlyRealCol = trio.indexOfFirst { it != SlotSymbol.JOKER }
+                    if (targetSymbol != highestPerReel[onlyRealCol]) continue
                 }
-
-                val baseWin = maxOf(bet, (bet * targetSymbol.multiplier3x) / 2)
-                val jokerMultiplier = when (jokerCount) {
-                    1 -> 2
-                    2 -> 4
-                    else -> 1
-                }
-                val finalWin = baseWin * jokerMultiplier
-                val note = if (jokerMultiplier > 1) "JOKER ×$jokerMultiplier" else ""
-                rawResults.add(
+                val win = bet * getCrissCross27Multiplier(targetSymbol) * platnoMultiplier
+                results.add(
                     WinningLineResult(
                         lineId = line.id,
                         symbol = targetSymbol,
-                        winAmount = finalWin,
+                        winAmount = win,
                         rowsPerReel = line.rowsPerReel,
                         activeColumns = listOf(0, 1, 2),
-                        bonusNote = note
+                        bonusNote = if (platnoMultiplier > 1) "PLÁTNO ×2" else ""
                     )
                 )
             }
         }
 
-        // Mystery bonus: pokud na obrazovce padnou 3 symboly JOKER (a netvori uz primou linii 3x JOKER)
-        val totalJokersOnScreen = reels.take(3).sumOf { col -> col.count { it == SlotSymbol.JOKER } }
-        val hasDirectJokerLine = rawResults.any { it.symbol == SlotSymbol.JOKER }
-        val mysteryWin = if (totalJokersOnScreen >= 3 && !hasDirectJokerLine) {
-            val mysteryMults = listOf(20, 40, 60, 100, 150, 200)
+        // Scatter 3x ZVONEK -> MYSTERY VYHRA (8x az 50x sazka)
+        val bellPositions = mutableListOf<Pair<Int, Int>>()
+        for (c in 0..2) {
+            for (r in 0..2) {
+                if (reels[c][r] == SlotSymbol.BELL) {
+                    bellPositions.add(c to r)
+                }
+            }
+        }
+        val mysteryWin = if (bellPositions.size >= 3) {
+            val mysteryMults = listOf(8, 12, 16, 25, 35, 50)
             bet * mysteryMults[Random.nextInt(mysteryMults.size)]
         } else {
             0
         }
 
-        val totalWin = rawResults.sumOf { it.winAmount } + mysteryWin
+        val highlighted = mutableListOf<Pair<Int, Int>>()
+        if (mysteryWin > 0) highlighted.addAll(bellPositions)
+        if (allNineAreFruitOrJoker && results.isNotEmpty()) {
+            for (c in 0..2) for (r in 0..2) highlighted.add(c to r)
+        }
+
+        val totalWin = results.sumOf { it.winAmount } + mysteryWin
         return SpinEvaluationSummary(
-            winningLines = rawResults,
+            winningLines = results,
             totalWin = totalWin,
-            mysteryBonusWin = mysteryWin
+            mysteryBonusWin = mysteryWin,
+            isFullFruitDouble = allNineAreFruitOrJoker && results.isNotEmpty(),
+            highlightCells = highlighted.distinct()
         )
     }
 
     /**
-     * 4) Vyhodnoceni VEGAS 5V (5 valcu, 9 linii + Scatter ZVONEK pro FREE SPINY s 3x nasobicem).
-     * OPRAVENO: Na kazde linii vyhodnoti delky 3, 4 i 5 a vybere tu s NEJVYSSI vyhrou!
+     * 4) Vyhodnoceni VEGAS 5V (5 valcu, 9 linii + Scatter ZVONEK pro 8/12/18 FREE SPINU s 2x nasobicem).
      */
-    fun evaluateVegas5Reels(
+    private fun evaluateVegas5Reels(
         reels: List<List<SlotSymbol>>,
         bet: Int,
         freeSpinMultiplier: Int = 1
@@ -470,13 +682,8 @@ object SlotMachineRules {
                 val nonJokers = sub.filter { it != SlotSymbol.JOKER }
                 val candidateSym = nonJokers.firstOrNull() ?: SlotSymbol.JOKER
                 if (nonJokers.all { it == candidateSym }) {
-                    val lengthFactor = when (len) {
-                        3 -> 1.0
-                        4 -> 2.5
-                        else -> 6.0
-                    }
-                    val rawWin = (bet * candidateSym.multiplier3x * lengthFactor).toInt()
-                    val multipliedWin = rawWin * freeSpinMultiplier
+                    val mult = getVegas5VMultiplier(candidateSym, len)
+                    val multipliedWin = bet * mult * freeSpinMultiplier
                     candidates.add(
                         WinningLineResult(
                             lineId = line.id,
@@ -500,12 +707,20 @@ object SlotMachineRules {
             }
         }
 
-        // Scatter kontrola: 3 nebo vice symbolu ZVONEK kdekoliv na 5 valcich spousti FREE SPINY
-        val bellCount = reels.take(5).sumOf { col -> col.count { it == SlotSymbol.BELL } }
+        // Scatter kontrola: 3, 4 nebo 5 ZVONKU kdekoliv na 5 valcich spousti 8, 12 nebo 18 FREE SPINU
+        val bellPositions = mutableListOf<Pair<Int, Int>>()
+        for (c in 0..4) {
+            for (r in 0..2) {
+                if (reels[c][r] == SlotSymbol.BELL) {
+                    bellPositions.add(c to r)
+                }
+            }
+        }
+
         val freeSpinsWon = when {
-            bellCount >= 5 -> 20
-            bellCount == 4 -> 15
-            bellCount == 3 -> 10
+            bellPositions.size >= 5 -> 18
+            bellPositions.size == 4 -> 12
+            bellPositions.size == 3 -> 8
             else -> 0
         }
 
@@ -513,53 +728,84 @@ object SlotMachineRules {
         return SpinEvaluationSummary(
             winningLines = results,
             totalWin = totalWin,
-            awardedFreeSpins = freeSpinsWon
+            awardedFreeSpins = freeSpinsWon,
+            highlightCells = if (freeSpinsWon > 0) bellPositions else emptyList()
         )
     }
 
     /**
-     * Chytry navrh HOLD pro 3, 4 nebo 5 valcu:
-     * Vraci masku doporucenych valcu (TIP), aniz by je nutil hraci natvrdo.
+     * Prohleda VSECH 5 vyhernich linii (vodorovne i uhlopricky) v rezimech KLASIK 3V a SUPER 4V
+     * a najde nejvyhodnejsi dvojici valcu (nebo valec s JOKEREM / 777), kterou stoji za to podrzet (HOLD).
      */
     fun suggestHoldReels(reels: List<List<SlotSymbol>>, mode: MachineMode): List<Boolean> {
         val reelCount = mode.reelCount
-        val result = MutableList(reelCount) { false }
-        if (reels.size < reelCount) return result
+        val emptyMask = List(reelCount) { false }
+        if (!mode.allowHold || reels.size < reelCount) return emptyMask
 
-        // 1) Pokud je na nekterem valci JOKER, doporucime podrzet valce s JOKEREM
-        val jokerCols = (0 until reelCount).filter { r -> reels[r].any { it == SlotSymbol.JOKER } }
-        if (jokerCols.isNotEmpty() && jokerCols.size < reelCount) {
-            for (c in jokerCols.take(reelCount - 1)) {
-                result[c] = true
+        var bestScore = 0
+        var bestCols: List<Int> = emptyList()
+
+        if (mode == MachineMode.CLASSIC_3V) {
+            val pairs = listOf(0 to 1, 1 to 2, 0 to 2)
+            for (line in PAYLINES_3V) {
+                for ((c1, c2) in pairs) {
+                    val sym1 = reels[c1][line.rowsPerReel[c1]]
+                    val sym2 = reels[c2][line.rowsPerReel[c2]]
+                    val pairScore = scoreHoldPair(sym1, sym2, isClassic = true)
+                    if (pairScore > bestScore) {
+                        bestScore = pairScore
+                        bestCols = listOf(c1, c2)
+                    }
+                }
             }
-            return result
-        }
-
-        // 2) Sousedici dvojice shodnych symbolu na prostredni linii
-        val midRow = List(reelCount) { r -> reels[r][1] }
-        for (i in 0 until reelCount - 1) {
-            if (midRow[i] == midRow[i + 1]) {
-                result[i] = true
-                result[i + 1] = true
-                return result
-            }
-        }
-
-        // U 3valcove hry take 1. a 3. valec na prostredni linii
-        if (reelCount == 3 && midRow[0] == midRow[2]) {
-            result[0] = true
-            result[2] = true
-            return result
-        }
-
-        // 3) Valec se SEDMICKOU na prostrednim radku
-        for (r in 0 until reelCount) {
-            if (reels[r][1] == SlotSymbol.SEVEN) {
-                result[r] = true
-                return result
+        } else if (mode == MachineMode.SUPER_4V) {
+            // Kontrola dvojic uvnitr 3-valcoveho okna zleva (0,1,2) a zprava (1,2,3) na vsech 5 liniich
+            val validPairs = listOf(0 to 1, 1 to 2, 0 to 2, 2 to 3, 1 to 3)
+            for (line in PAYLINES_4V) {
+                for ((c1, c2) in validPairs) {
+                    val sym1 = reels[c1][line.rowsPerReel[c1]]
+                    val sym2 = reels[c2][line.rowsPerReel[c2]]
+                    val pairScore = scoreHoldPair(sym1, sym2, isClassic = false)
+                    if (pairScore > bestScore) {
+                        bestScore = pairScore
+                        bestCols = listOf(c1, c2)
+                    }
+                }
             }
         }
 
-        return result
+        if (bestCols.isNotEmpty()) {
+            return List(reelCount) { idx -> idx in bestCols }
+        }
+
+        // Pokud neni dvojice na linii, ale na nekterem valci je JOKER nebo SEDMICKA, nabidneme ten valec
+        val singleJokerCol = (0 until reelCount).firstOrNull { c -> reels[c].any { it == SlotSymbol.JOKER } }
+        if (singleJokerCol != null) {
+            return List(reelCount) { idx -> idx == singleJokerCol }
+        }
+        val singleSevenCol = (0 until reelCount).firstOrNull { c -> reels[c].any { it == SlotSymbol.SEVEN } }
+        if (singleSevenCol != null) {
+            return List(reelCount) { idx -> idx == singleSevenCol }
+        }
+
+        return emptyMask
+    }
+
+    private fun scoreHoldPair(sym1: SlotSymbol, sym2: SlotSymbol, isClassic: Boolean): Int {
+        return when {
+            sym1 == SlotSymbol.JOKER && sym2 == SlotSymbol.JOKER -> 500
+            sym1 == sym2 -> {
+                if (isClassic) getClassic3VMultiplier(sym1) * 2 else getSuper4VMultiplier3x(sym1) * 2
+            }
+            sym1 == SlotSymbol.JOKER -> {
+                val m = if (isClassic) getClassic3VMultiplier(sym2) else getSuper4VMultiplier3x(sym2)
+                if (m >= 10) m + 15 else 0 // Slaby symbol vedle Jokera nedoporucujeme drzet
+            }
+            sym2 == SlotSymbol.JOKER -> {
+                val m = if (isClassic) getClassic3VMultiplier(sym1) else getSuper4VMultiplier3x(sym1)
+                if (m >= 10) m + 15 else 0
+            }
+            else -> 0
+        }
     }
 }

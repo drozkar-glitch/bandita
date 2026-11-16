@@ -28,8 +28,8 @@ enum class BanditaSound {
 
 expect object PlatformServices {
     fun playSound(sound: BanditaSound)
-    fun getSavedCredits(): Int
-    fun saveCredits(credits: Int)
+    fun getSavedCredits(gameId: String = "bandita"): Int
+    fun saveCredits(credits: Int, gameId: String = "bandita")
     fun getHighScore(gameId: String = "bandita"): Int
     fun saveHighScore(score: Int, gameId: String = "bandita")
     fun getSavedNick(): String

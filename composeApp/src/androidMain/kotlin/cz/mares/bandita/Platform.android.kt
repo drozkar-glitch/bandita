@@ -13,6 +13,9 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlin.math.PI
 import kotlin.math.sin
@@ -22,22 +25,36 @@ object AndroidContextHolder {
     var appContext: Context? = null
 }
 
+private data class CachedPcmSample(
+    val pcm: ShortArray,
+    val durationMs: Int
+)
+
 actual object PlatformServices {
     private const val PREFS_NAME = "bandita_mares_prefs"
     private const val KEY_CREDITS = "saved_credits"
     private const val KEY_HIGH_SCORE_PREFIX = "high_score_"
     private const val KEY_NICK = "player_nick"
     private const val KEY_DEVICE_ID = "device_id"
+    private const val SAMPLE_RATE = 22050
     private const val FIREBASE_BASE_URL = "https://mares-games-default-rtdb.europe-west1.firebasedatabase.app"
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val soundExecutor = Executors.newFixedThreadPool(6)
+    private val activeAudioTracks = AtomicInteger(0)
+    private val sampleCache = ConcurrentHashMap<BanditaSound, CachedPcmSample>()
 
     private fun prefs() = AndroidContextHolder.appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    actual fun getSavedCredits(): Int = prefs()?.getInt(KEY_CREDITS, 200) ?: 200
+    actual fun getSavedCredits(gameId: String): Int {
+        val p = prefs() ?: return 200
+        val key = if (gameId == "bandita") KEY_CREDITS else "${KEY_CREDITS}_$gameId"
+        return p.getInt(key, 200)
+    }
 
-    actual fun saveCredits(credits: Int) {
-        prefs()?.edit()?.putInt(KEY_CREDITS, credits)?.apply()
+    actual fun saveCredits(credits: Int, gameId: String) {
+        val key = if (gameId == "bandita") KEY_CREDITS else "${KEY_CREDITS}_$gameId"
+        prefs()?.edit()?.putInt(key, credits)?.apply()
     }
 
     actual fun getHighScore(gameId: String): Int {
@@ -71,84 +88,124 @@ actual object PlatformServices {
     }
 
     actual fun playSound(sound: BanditaSound) {
-        thread {
+        val isTransientTick = (
+            sound == BanditaSound.REEL_TICK ||
+            sound == BanditaSound.WHEEL_TICK ||
+            sound == BanditaSound.RISK_BEAT_A ||
+            sound == BanditaSound.RISK_BEAT_B
+        )
+        val limit = if (isTransientTick) 3 else 7
+        if (activeAudioTracks.get() >= limit) return
+
+        soundExecutor.execute {
+            if (activeAudioTracks.incrementAndGet() > limit + 1) {
+                activeAudioTracks.decrementAndGet()
+                return@execute
+            }
+            var track: AudioTrack? = null
             try {
-                when (sound) {
-                    BanditaSound.BUTTON_CLICK -> synthArcadeTone(listOf(987.77 to 28, 1318.5 to 22))
-                    BanditaSound.REEL_TICK -> synthArcadeTone(listOf(240.0 to 14), richHarmonics = false)
-                    BanditaSound.REEL_STOP -> synthArcadeTone(listOf(155.0 to 45, 98.0 to 45), richHarmonics = false)
-                    BanditaSound.HOLD_LOCK -> synthArcadeTone(listOf(587.33 to 40, 880.0 to 55))
-                    BanditaSound.WHEEL_TICK -> synthArcadeTone(listOf(1174.66 to 22, 1567.98 to 18))
-                    BanditaSound.SUPER_TRANSFER -> synthArcadeTone(
-                        listOf(523.25 to 35, 659.25 to 35, 783.99 to 35, 1046.5 to 45, 1318.5 to 70)
-                    )
+                val sample = sampleCache.getOrPut(sound) { buildSampleForSound(sound) }
+                if (sample.pcm.isEmpty()) return@execute
 
-                    // Chytlavy 90s rytmicky podkres pri blikani RISK 2x (stridavy 2-tonovy groove)
-                    BanditaSound.RISK_BEAT_A -> synthArcadeTone(
-                        listOf(330.0 to 38, 659.25 to 52)
+                track = AudioTrack.Builder()
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_GAME)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build()
                     )
-                    BanditaSound.RISK_BEAT_B -> synthArcadeTone(
-                        listOf(293.66 to 38, 587.33 to 52)
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setSampleRate(SAMPLE_RATE)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .build()
                     )
+                    .setBufferSizeInBytes(sample.pcm.size * 2)
+                    .setTransferMode(AudioTrack.MODE_STATIC)
+                    .build()
 
-                    // Stupnujici se triumfalni trylky pri trefenem RISKU (1. az 5. krok o ton vys!)
-                    BanditaSound.RISK_WIN_1 -> synthArcadeTone(
-                        listOf(523.25 to 45, 659.25 to 45, 783.99 to 45, 659.25 to 40, 1046.5 to 120)
-                    )
-                    BanditaSound.RISK_WIN_2 -> synthArcadeTone(
-                        listOf(587.33 to 45, 739.99 to 45, 880.0 to 45, 739.99 to 40, 1174.66 to 120)
-                    )
-                    BanditaSound.RISK_WIN_3 -> synthArcadeTone(
-                        listOf(659.25 to 45, 830.61 to 45, 987.77 to 45, 830.61 to 40, 1318.51 to 130)
-                    )
-                    BanditaSound.RISK_WIN_4 -> synthArcadeTone(
-                        listOf(698.46 to 45, 880.0 to 45, 1046.5 to 45, 880.0 to 40, 1396.91 to 140)
-                    )
-                    BanditaSound.RISK_WIN_5 -> synthArcadeTone(
-                        listOf(
-                            783.99 to 45, 987.77 to 45, 1174.66 to 45, 1567.98 to 70,
-                            1174.66 to 45, 1567.98 to 190
-                        )
-                    )
-
-                    BanditaSound.RISK_LOSE -> synthArcadeTone(
-                        listOf(311.13 to 90, 277.18 to 90, 246.94 to 110, 185.0 to 230)
-                    )
-
-                    BanditaSound.WIN_SMALL -> synthArcadeTone(
-                        listOf(523.25 to 60, 659.25 to 60, 783.99 to 60, 1046.5 to 140)
-                    )
-                    BanditaSound.WIN_BIG -> synthArcadeTone(
-                        listOf(
-                            523.25 to 55, 659.25 to 55, 783.99 to 55, 1046.5 to 80,
-                            783.99 to 55, 1046.5 to 80, 1318.5 to 170
-                        )
-                    )
-                    BanditaSound.JACKPOT_777 -> synthArcadeTone(
-                        listOf(
-                            523.25 to 60, 659.25 to 60, 783.99 to 60, 1046.5 to 95,
-                            987.77 to 60, 1046.5 to 60, 1318.5 to 95, 1567.98 to 240
-                        )
-                    )
-                }
+                track.write(sample.pcm, 0, sample.pcm.size)
+                track.play()
+                Thread.sleep(sample.durationMs.toLong() + 30L)
             } catch (_: Throwable) {
+            } finally {
+                try {
+                    track?.release()
+                } catch (_: Throwable) {
+                }
+                activeAudioTracks.decrementAndGet()
             }
         }
     }
 
-    /**
-     * Dvouhlasy retro syntezator ve stylu 90s automatovych cipu (YM2149 / OPL)
-     */
-    private fun synthArcadeTone(notes: List<Pair<Double, Int>>, richHarmonics: Boolean = true) {
-        val sampleRate = 22050
+    private fun buildSampleForSound(sound: BanditaSound): CachedPcmSample {
+        return when (sound) {
+            BanditaSound.BUTTON_CLICK -> generateArcadePcm(listOf(987.77 to 26, 1318.5 to 22))
+            BanditaSound.REEL_TICK -> generateArcadePcm(listOf(235.0 to 13), richHarmonics = false)
+            BanditaSound.REEL_STOP -> generateArcadePcm(listOf(155.0 to 42, 96.0 to 45), richHarmonics = false)
+            BanditaSound.HOLD_LOCK -> generateArcadePcm(listOf(587.33 to 38, 880.0 to 52))
+            BanditaSound.WHEEL_TICK -> generateArcadePcm(listOf(1174.66 to 20, 1567.98 to 16))
+            BanditaSound.SUPER_TRANSFER -> generateArcadePcm(
+                listOf(523.25 to 35, 659.25 to 35, 783.99 to 35, 1046.5 to 45, 1318.5 to 70)
+            )
+            BanditaSound.RISK_BEAT_A -> generateArcadePcm(
+                listOf(330.0 to 36, 659.25 to 48)
+            )
+            BanditaSound.RISK_BEAT_B -> generateArcadePcm(
+                listOf(293.66 to 36, 587.33 to 48)
+            )
+            BanditaSound.RISK_WIN_1 -> generateArcadePcm(
+                listOf(523.25 to 45, 659.25 to 45, 783.99 to 45, 659.25 to 40, 1046.5 to 115)
+            )
+            BanditaSound.RISK_WIN_2 -> generateArcadePcm(
+                listOf(587.33 to 45, 739.99 to 45, 880.0 to 45, 739.99 to 40, 1174.66 to 115)
+            )
+            BanditaSound.RISK_WIN_3 -> generateArcadePcm(
+                listOf(659.25 to 45, 830.61 to 45, 987.77 to 45, 830.61 to 40, 1318.51 to 125)
+            )
+            BanditaSound.RISK_WIN_4 -> generateArcadePcm(
+                listOf(698.46 to 45, 880.0 to 45, 1046.5 to 45, 880.0 to 40, 1396.91 to 135)
+            )
+            BanditaSound.RISK_WIN_5 -> generateArcadePcm(
+                listOf(
+                    783.99 to 45, 987.77 to 45, 1174.66 to 45, 1567.98 to 65,
+                    1174.66 to 45, 1567.98 to 180
+                )
+            )
+            BanditaSound.RISK_LOSE -> generateArcadePcm(
+                listOf(311.13 to 85, 277.18 to 85, 246.94 to 105, 185.0 to 220)
+            )
+            BanditaSound.WIN_SMALL -> generateArcadePcm(
+                listOf(523.25 to 58, 659.25 to 58, 783.99 to 58, 1046.5 to 135)
+            )
+            BanditaSound.WIN_BIG -> generateArcadePcm(
+                listOf(
+                    523.25 to 52, 659.25 to 52, 783.99 to 52, 1046.5 to 75,
+                    783.99 to 52, 1046.5 to 75, 1318.5 to 165
+                )
+            )
+            BanditaSound.JACKPOT_777 -> generateArcadePcm(
+                listOf(
+                    523.25 to 58, 659.25 to 58, 783.99 to 58, 1046.5 to 90,
+                    987.77 to 58, 1046.5 to 58, 1318.5 to 90, 1567.98 to 230
+                )
+            )
+        }
+    }
+
+    private fun generateArcadePcm(
+        notes: List<Pair<Double, Int>>,
+        richHarmonics: Boolean = true
+    ): CachedPcmSample {
         val totalMs = notes.sumOf { it.second }
-        val totalSamples = (sampleRate * totalMs) / 1000
-        if (totalSamples <= 0) return
+        val totalSamples = (SAMPLE_RATE * totalMs) / 1000
+        if (totalSamples <= 0) return CachedPcmSample(ShortArray(0), 0)
 
         val pcm = ShortArray(totalSamples)
         var offset = 0
         for ((freq, durationMs) in notes) {
-            val count = (sampleRate * durationMs) / 1000
+            val count = (SAMPLE_RATE * durationMs) / 1000
             for (i in 0 until count) {
                 if (offset + i >= totalSamples) break
                 val attackSamples = (count / 10).coerceAtLeast(1)
@@ -158,12 +215,11 @@ actual object PlatformServices {
                     1.0 - ((i - attackSamples).toDouble() / (count - attackSamples).coerceAtLeast(1).toDouble()) * 0.65
                 }
 
-                val angle1 = 2.0 * PI * i * freq / sampleRate
+                val angle1 = 2.0 * PI * i * freq / SAMPLE_RATE
                 val sq1 = if (sin(angle1) >= 0.0) 0.55 else -0.55
 
                 val sampleVal = if (richHarmonics) {
-                    // Pridame oktavovou harmonickou a jemny FM dozvuk pro chytlavy zvonivy zvuk
-                    val angle2 = 2.0 * PI * i * (freq * 2.0) / sampleRate
+                    val angle2 = 2.0 * PI * i * (freq * 2.0) / SAMPLE_RATE
                     val sq2 = if (sin(angle2) >= 0.15) 0.28 else -0.28
                     val sub = sin(angle1 * 0.5) * 0.17
                     sq1 + sq2 + sub
@@ -176,28 +232,7 @@ actual object PlatformServices {
             offset += count
         }
 
-        val track = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_GAME)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build()
-            )
-            .setBufferSizeInBytes(pcm.size * 2)
-            .setTransferMode(AudioTrack.MODE_STATIC)
-            .build()
-
-        track.write(pcm, 0, pcm.size)
-        track.play()
-        Thread.sleep(totalMs.toLong() + 35L)
-        track.release()
+        return CachedPcmSample(pcm, totalMs)
     }
 
     actual fun fetchTopScores(

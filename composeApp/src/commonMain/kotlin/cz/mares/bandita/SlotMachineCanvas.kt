@@ -32,6 +32,7 @@ fun SlotMachineReelsCanvas(
     suggestedHoldReels: List<Boolean>,
     canHoldNow: Boolean,
     winningLines: List<WinningLineResult>,
+    highlightCells: List<Pair<Int, Int>>,
     leverPullProgress: Float,
     blinkPhase: Boolean,
     onReelTapped: (Int) -> Unit,
@@ -76,7 +77,7 @@ fun SlotMachineReelsCanvas(
         val windowWidth = cabinetWidth - pad * 2.8f
         val windowHeight = h - pad * 2f
 
-        // 1) Kovovy a zlaty vnejsi ram okna valcu podle aktivniho automatu
+        // 1) Kovovy vnejsi ram okna valcu podle aktivniho automatu
         val frameColors = when (machineMode) {
             MachineMode.CLASSIC_3V -> listOf(Color(0xFFFFD54F), Color(0xFFB28900), Color(0xFFFFF176), Color(0xFF8D6E63))
             MachineMode.SUPER_4V -> listOf(Color(0xFF80D8FF), Color(0xFF0277BD), Color(0xFFE1F5FE), Color(0xFF01579B))
@@ -108,7 +109,6 @@ fun SlotMachineReelsCanvas(
             val rx = windowLeft + reelGap + reelIdx * (reelWidth + reelGap)
             val ry = windowTop + reelGap
 
-            // Podklad valce (bilo-kremovy pergamen jako na klasickem automatu)
             drawRoundRect(
                 brush = Brush.verticalGradient(
                     colors = listOf(
@@ -126,19 +126,18 @@ fun SlotMachineReelsCanvas(
                 cornerRadius = CornerRadius(10f, 10f)
             )
 
-            // Orez pro symboly uvnitr valce
             clipRect(left = rx, top = ry, right = rx + reelWidth, bottom = ry + reelHeight) {
                 val isSpinning = spinningReels.getOrElse(reelIdx) { false }
                 val phase = reelPhaseOffsets.getOrElse(reelIdx) { 0f }
 
                 if (isSpinning) {
-                    // Posun po skutecnem mechanickem pasu valce
+                    // Plynuly posun SHORA DOLU bez preskoceni pri prechodu celeho cisla:
+                    // Kdyz phase klesa (napr. 10.0 -> 9.8 -> 9.0), offset - fraction plynule roste!
                     val baseIndex = floor(phase).toInt()
                     val fraction = phase - baseIndex.toFloat()
-                    val shiftY = fraction * cellHeight
-                    for (row in -1..3) {
-                        val sym = SlotMachineRules.getSymbolOnStrip(reelIdx, baseIndex + row)
-                        val cy = ry + row * cellHeight + shiftY + cellHeight * 0.5f
+                    for (offset in 0..3) {
+                        val sym = SlotMachineRules.getSymbolOnStrip(machineMode, reelIdx, baseIndex + offset)
+                        val cy = ry + (offset.toFloat() - fraction) * cellHeight + cellHeight * 0.5f
                         val cx = rx + reelWidth * 0.5f
                         drawSlotSymbol(
                             symbol = sym,
@@ -156,14 +155,21 @@ fun SlotMachineReelsCanvas(
                         val cy = ry + row * cellHeight + cellHeight * 0.5f
                         val cx = rx + reelWidth * 0.5f
 
-                        val isWinningCell = winningLines.any { win ->
+                        val isLineWinningCell = winningLines.any { win ->
                             reelIdx in win.activeColumns &&
                                 win.rowsPerReel.getOrElse(reelIdx) { -1 } == row
                         }
+                        val isScatterWinningCell = highlightCells.any { (c, r) -> c == reelIdx && r == row }
+                        val isWinningCell = isLineWinningCell || isScatterWinningCell
 
                         if (isWinningCell) {
+                            val glowColor = when {
+                                isScatterWinningCell && blinkPhase -> Color(0x6600E5FF)
+                                blinkPhase -> Color(0x55FFD700)
+                                else -> Color(0x33FF5252)
+                            }
                             drawRoundRect(
-                                color = if (blinkPhase) Color(0x55FFD700) else Color(0x33FF5252),
+                                color = glowColor,
                                 topLeft = Offset(rx + 3f, ry + row * cellHeight + 3f),
                                 size = Size(reelWidth - 6f, cellHeight - 6f),
                                 cornerRadius = CornerRadius(8f, 8f)
@@ -228,11 +234,10 @@ fun SlotMachineReelsCanvas(
             )
         }
 
-        // 3) Vodici linky vyhernich linii a laserove paprsky vyher
+        // 3) Vodici linky vyhernich linii a bocni odznaky podle typu automatu
         val rowCentersY = List(3) { r -> windowTop + reelGap + r * cellHeight + cellHeight * 0.5f }
         val reelCentersX = List(reelCount) { c -> windowLeft + reelGap + c * (reelWidth + reelGap) + reelWidth * 0.5f }
 
-        // Jemna vodici linka uprostred (hlavni linie 1)
         drawLine(
             color = Color(0x44FF1744),
             start = Offset(windowLeft, rowCentersY[1]),
@@ -240,36 +245,79 @@ fun SlotMachineReelsCanvas(
             strokeWidth = 2f
         )
 
-        // Znaky linii na levem okraji
-        val badgeRadius = min(pad * 0.65f, 12f)
-        val lineBadgePositions = listOf(
-            1 to Offset(windowLeft - badgeRadius * 0.5f, rowCentersY[1]),
-            2 to Offset(windowLeft - badgeRadius * 0.5f, rowCentersY[0]),
-            3 to Offset(windowLeft - badgeRadius * 0.5f, rowCentersY[2]),
-            4 to Offset(windowLeft - badgeRadius * 0.5f, windowTop + badgeRadius),
-            5 to Offset(windowLeft - badgeRadius * 0.5f, windowTop + windowHeight - badgeRadius)
-        )
-        for ((lineNo, pos) in lineBadgePositions) {
-            val isLineWon = winningLines.any { it.lineId == lineNo }
-            val badgeBaseColor = when (machineMode) {
-                MachineMode.CRISSCROSS_27 -> Color(0xFFAA00FF)
-                MachineMode.VEGAS_5V -> Color(0xFF00C853)
-                else -> Color(0xFFD50000)
+        val badgeRadius = min(pad * 0.62f, 11.5f)
+        val leftX = windowLeft - badgeRadius * 0.45f
+        val rightX = windowLeft + windowWidth + badgeRadius * 0.45f
+
+        when (machineMode) {
+            MachineMode.CRISSCROSS_27 -> {
+                // 3 krizove body vlevo i vpravo pro 27 cest (3x3x3)
+                for (r in 0..2) {
+                    val rowActive = winningLines.any { it.rowsPerReel.firstOrNull() == r }
+                    val rowRightActive = winningLines.any { it.rowsPerReel.lastOrNull() == r }
+                    drawCircle(
+                        color = if (rowActive && blinkPhase) Color(0xFFFFEA00) else Color(0xFFAA00FF),
+                        radius = badgeRadius,
+                        center = Offset(leftX, rowCentersY[r])
+                    )
+                    drawCircle(color = Color.White, radius = badgeRadius, center = Offset(leftX, rowCentersY[r]), style = Stroke(1.4f))
+
+                    drawCircle(
+                        color = if (rowRightActive && blinkPhase) Color(0xFFFFEA00) else Color(0xFFAA00FF),
+                        radius = badgeRadius,
+                        center = Offset(rightX, rowCentersY[r])
+                    )
+                    drawCircle(color = Color.White, radius = badgeRadius, center = Offset(rightX, rowCentersY[r]), style = Stroke(1.4f))
+                }
             }
-            drawCircle(
-                color = if (isLineWon && blinkPhase) Color(0xFFFFEA00) else badgeBaseColor,
-                radius = badgeRadius,
-                center = pos
-            )
-            drawCircle(
-                color = Color.White,
-                radius = badgeRadius,
-                center = pos,
-                style = Stroke(width = 1.5f)
-            )
+            MachineMode.VEGAS_5V -> {
+                // 5 odznaku vlevo (linie 1..5) a 4 odznaky vpravo (linie 6..9)
+                val leftBadges = listOf(
+                    1 to Offset(leftX, rowCentersY[1]),
+                    2 to Offset(leftX, rowCentersY[0]),
+                    3 to Offset(leftX, rowCentersY[2]),
+                    4 to Offset(leftX, windowTop + badgeRadius),
+                    5 to Offset(leftX, windowTop + windowHeight - badgeRadius)
+                )
+                val rightBadges = listOf(
+                    6 to Offset(rightX, (rowCentersY[0] + rowCentersY[1]) * 0.5f),
+                    7 to Offset(rightX, (rowCentersY[1] + rowCentersY[2]) * 0.5f),
+                    8 to Offset(rightX, windowTop + windowHeight - badgeRadius * 2.2f),
+                    9 to Offset(rightX, windowTop + badgeRadius * 2.2f)
+                )
+                for ((lineNo, pos) in (leftBadges + rightBadges)) {
+                    val won = winningLines.any { it.lineId == lineNo }
+                    drawCircle(
+                        color = if (won && blinkPhase) Color(0xFFFFEA00) else Color(0xFF00C853),
+                        radius = badgeRadius,
+                        center = pos
+                    )
+                    drawCircle(color = Color.White, radius = badgeRadius, center = pos, style = Stroke(1.4f))
+                }
+            }
+            else -> {
+                // 5 linii pro KLASIK 3V a SUPER 4V
+                val leftBadges = listOf(
+                    1 to Offset(leftX, rowCentersY[1]),
+                    2 to Offset(leftX, rowCentersY[0]),
+                    3 to Offset(leftX, rowCentersY[2]),
+                    4 to Offset(leftX, windowTop + badgeRadius),
+                    5 to Offset(leftX, windowTop + windowHeight - badgeRadius)
+                )
+                val baseBadgeColor = if (machineMode == MachineMode.SUPER_4V) Color(0xFF0288D1) else Color(0xFFD50000)
+                for ((lineNo, pos) in leftBadges) {
+                    val won = winningLines.any { it.lineId == lineNo }
+                    drawCircle(
+                        color = if (won && blinkPhase) Color(0xFFFFEA00) else baseBadgeColor,
+                        radius = badgeRadius,
+                        center = pos
+                    )
+                    drawCircle(color = Color.White, radius = badgeRadius, center = pos, style = Stroke(1.4f))
+                }
+            }
         }
 
-        // Zvyraznene laserove paprsky pro vyhodnocene vyherni linie
+        // Laserove paprsky pro vyhodnocene vyherni linie
         val linePalette = listOf(
             Color(0xFFFF1744),
             Color(0xFF00E676),
